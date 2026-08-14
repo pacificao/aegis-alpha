@@ -9,6 +9,9 @@ node_modules/
 .next/
 coverage/
 test-results/
+backups/
+*.dump
+*.dump.sha256
 playwright-report/
 dist/
 *.log

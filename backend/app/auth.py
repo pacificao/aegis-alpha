@@ -31,15 +31,21 @@ class SessionStore:
     def create(self, username: str) -> tuple[str, str]:
         session_id = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(32)
-        self.client.hset(f"session:{session_id}", mapping={"username": username, "csrf": csrf})
-        self.client.expire(f"session:{session_id}", self.settings.session_ttl_seconds)
+        now = int(time.time())
+        self.client.hset(f"session:{session_id}", mapping={"username": username, "csrf": csrf, "created_at": now})
+        self.client.expire(f"session:{session_id}", min(self.settings.session_idle_ttl_seconds, self.settings.session_ttl_seconds))
         return session_id, csrf
 
     def get(self, session_id: str) -> dict[str, str] | None:
         data = self.client.hgetall(f"session:{session_id}")
         if not data:
             return None
-        self.client.expire(f"session:{session_id}", self.settings.session_ttl_seconds)
+        created_at = int(data.get("created_at", "0"))
+        absolute_remaining = self.settings.session_ttl_seconds - (int(time.time()) - created_at)
+        if created_at <= 0 or absolute_remaining <= 0:
+            self.delete(session_id)
+            return None
+        self.client.expire(f"session:{session_id}", min(self.settings.session_idle_ttl_seconds, absolute_remaining))
         return data
 
     def delete(self, session_id: str) -> None:

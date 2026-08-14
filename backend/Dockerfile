@@ -2,8 +2,8 @@ FROM python:3.12.11-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 RUN addgroup --system aegis && adduser --system --ingroup aegis aegis
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app

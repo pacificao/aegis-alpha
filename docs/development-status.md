@@ -2,22 +2,27 @@
 
 - Current phase: Phase 1 — Aegis Core / Foundation
 - Current version: `0.1.0-core-dev`
-- Phase 1 completion: 59/69 complete (86%); 5 in progress; 5 blocked
-- Completed: repository structure and agent contract; architecture/security/data/environment/deployment/network/Robinhood documentation; FastAPI health/status/roadmap/system/broker APIs; SQLAlchemy models and Alembic migration; PostgreSQL/Redis Compose services; persistent roadmap seeding; structured logging/configuration; dark Next.js dashboard/roadmap/security/system UI; Nginx security boundary; backend/API tests; frontend test definition; CI workflow; firewall planning script; trading hard-disable
-- In progress: reproducible container build, frontend runtime verification, authenticated browser-to-database validation, Git workflow promotion
-- Blocked: UFW inspection/change still requires Nathan
-- Test results: Python source compilation and backend/API suite previously passed; roadmap invariant check passed (12 phases, 69 Phase 1 tasks, 175 total). Docker Compose now runs PostgreSQL, Redis, FastAPI, Next.js, and unprivileged Nginx. Browser smoke coverage now checks hydration, login rendering, static assets, protected API behavior, console errors, and protected-route redirects.
-- Last major change: restored browser rendering through Nginx while preserving the fail-closed host authentication boundary
-- Next recommended task: harden the production Next.js CSP with per-response nonces and complete the remaining Phase 1 operational checks
+- Verified Phase 1 roadmap state: 67/69 COMPLETE (97% rounded); 1 BLOCKED; 1 WAITING_FOR_CREDENTIALS
+- BLOCKED: task 48, GitHub branch protection. The private repository and CI exist, but GitHub returned HTTP 403 because protected branches for this private repository require a plan upgrade. The repository must not be made public to bypass this.
+- WAITING_FOR_CREDENTIALS: task 61, official Robinhood Trading MCP OAuth/onboarding and read-only connectivity verification.
+- Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
-## 2026-08-14 — Browser rendering recovery
+## Verified 2026-08-14
 
-- Corrected the frontend container runtime binding to `0.0.0.0:3000` so Nginx can reach the standalone Next.js server.
-- Corrected unprivileged/read-only Nginx runtime paths by placing its PID and temporary paths under `/tmp` and listening on container port 8080.
-- Diagnosed the black page as a CSP/Next.js 15 incompatibility: `script-src 'self'` blocked inline `self.__next_f` bootstrap data, preventing hydration and the client-side 401 redirect.
-- Temporarily changed only `script-src` to `'self' 'unsafe-inline'`. No `unsafe-eval` or external script origin was added; all other restrictive directives and security headers remain. Production nonce hardening is tracked in `docs/decisions/csp.md`.
-- Added a shared client authentication gate because API-driven pages redirected on 401 but the static Security route did not. Every protected frontend route now verifies `/api/auth/me` and fails closed to `/login`; no credential handling or authentication bypass was introduced.
-- Added a Playwright smoke suite covering visible login UI, JavaScript execution/redirect, JS/CSS asset success, protected API 401, protected route gating, failed requests, and console errors.
-- Final verification: production frontend image built successfully; Playwright/Chromium smoke suite 4/4 passed; frontend Vitest suite 1/1 passed; backend pytest suite 5/5 passed; unauthenticated `/api/status` remained HTTP 401; all five Compose services were up and PostgreSQL, Redis, backend, and frontend were healthy.
-- Implemented the previously missing host PAM bridge after live login returned HTTP 503 with `FileNotFoundError` for `/run/aegis-auth/pam.sock`. The bridge uses the host PAM stack, accepts only `nathan`, verifies Unix peer credentials, rate-limits requests, stores/logs no password, and is packaged as a hardened root-owned systemd service. Installation was performed explicitly by Nathan with sudo.
-- Nathan installed the reviewed bridge on 2026-08-14. The root-owned systemd service was active, the backend could access the mode-0660 Unix socket, a known-invalid password returned HTTP 401 rather than 503, and Nathan manually confirmed that valid Ubuntu PAM authentication rendered the dashboard.
+- Private GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, local `main`, `develop`, and `feature/phase-1-core` workflow. Promotion/push and CI verification remain part of the release sequence.
+- Compose stack: PostgreSQL, Redis, FastAPI, Next.js, and Nginx healthy. Alembic is at `0003_expand_task_status`.
+- Public listeners: SSH 22 and Nginx HTTP 80 only. UFW is active, default-deny inbound, allowing 22/80/443. Ports 3000, 5432, 6379, and 8000 have no host listeners.
+- Host PAM bridge active; only `nathan` is accepted. Invalid authentication fails with 401, valid Ubuntu PAM login was manually verified by Nathan earlier on 2026-08-14. Passwords are not stored or application-logged.
+- Sessions are Redis-backed with HttpOnly, SameSite=Strict cookies, 30-minute idle expiry, 8-hour absolute expiry, logout, CSRF tokens on mutations, application and Nginx login throttles.
+- Backend pytest genuinely ran after fixing an entrypoint defect that previously caused `docker compose run backend pytest` to start Uvicorn instead of pytest: 5 passed, 1 read-only cache warning.
+- Frontend ESLint: 0 errors, 1 configuration-style warning. Vitest: 1 file/1 test passed. Production frontend build passed. Browser smoke was started against the rebuilt app; the runner produced only partial progress before this execution environment ended the process, so the prior 4/4 result is not being reused as a new pass claim.
+- UFW, Nginx headers/rate limits/request size, internal Compose networking, secret tracking scan, PostgreSQL/Redis connectivity, unauthorized 401, and trading-disabled health response were inspected.
+- `scripts/backup.sh` and `scripts/restore.md` provide dump, checksum, restore-test, repository, secret, rebuild, rollback, and recovery procedures. Backups are Git-ignored.
+- Official Robinhood documentation now identifies `https://agent.robinhood.com/mcp/trading` and desktop OAuth/onboarding for an Agentic account. Aegis reports `NOT_CONFIGURED`; the adapter exposes status only and contains no order capability.
+
+## Known limitations / next exact work
+
+1. Complete Robinhood Trading MCP desktop OAuth/onboarding, then verify read-only account synchronization without exposing credentials or enabling orders.
+2. Push the reviewed feature/develop/main sequence and verify GitHub Actions. Branch protection remains blocked until a GitHub plan supporting protected private branches is available.
+3. Rerun the complete Playwright suite in an execution window that allows all four tests to finish.
+4. Only after acceptance passes: tag `v0.1.0-core`, push it, finish privileged cleanup, and verify `sudo -n true` fails.

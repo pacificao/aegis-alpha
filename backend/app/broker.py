@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from .config import Settings
+
 
 class BrokerAdapter(ABC):
     @abstractmethod
@@ -8,6 +10,13 @@ class BrokerAdapter(ABC):
 
 
 class RobinhoodBrokerAdapter(BrokerAdapter):
+    """Read-only Phase 1 boundary; deliberately has no order methods."""
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
     def status(self) -> dict[str, str]:
-        return {"broker": "robinhood", "status": "DISCONNECTED", "detail": "Future integration; no credentials configured"}
+        if not self.settings.robinhood_connection_configured:
+            return {"broker": "robinhood", "status": "NOT_CONFIGURED", "detail": "Official Robinhood Trading MCP authorization has not been completed"}
+        return {"broker": "robinhood", "status": "DISCONNECTED", "detail": "Configured but no authenticated MCP connection is available to this service"}
 

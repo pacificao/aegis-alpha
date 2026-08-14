@@ -41,13 +41,13 @@ def test_roadmap_contains_all_phases_and_persists_update():
         app.dependency_overrides.clear()
 
 
-def test_broker_is_placeholder_only():
+def test_broker_reports_not_configured_without_authorization():
     app.dependency_overrides[current_principal] = lambda: principal
     try:
         with TestClient(app) as client:
             data = client.get("/api/broker/status").json()
-            assert data["status"] == "DISCONNECTED"
-            assert "Future integration" in data["detail"]
+            assert data["status"] == "NOT_CONFIGURED"
+            assert "authorization has not been completed" in data["detail"]
     finally:
         app.dependency_overrides.clear()
 

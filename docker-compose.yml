@@ -39,11 +39,15 @@ services:
       REDIS_URL: ${REDIS_URL}
       SESSION_SECRET: ${SESSION_SECRET}
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS}
+      SESSION_IDLE_TTL_SECONDS: ${SESSION_IDLE_TTL_SECONDS:-1800}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS}
       PAM_BRIDGE_SOCKET: ${PAM_BRIDGE_SOCKET}
+      ROBINHOOD_MCP_URL: ${ROBINHOOD_MCP_URL:-https://agent.robinhood.com/mcp/trading}
+      ROBINHOOD_CONNECTION_CONFIGURED: ${ROBINHOOD_CONNECTION_CONFIGURED:-false}
     volumes:
       - /run/aegis-auth:/run/aegis-auth
+      - ./tests:/app/tests:ro
     networks: [edge, data]
     depends_on:
       postgres: {condition: service_healthy}

@@ -12,6 +12,7 @@ class TaskStatus(str, enum.Enum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETE = "COMPLETE"
     BLOCKED = "BLOCKED"
+    WAITING_FOR_CREDENTIALS = "WAITING_FOR_CREDENTIALS"
 
 
 class Phase(Base):

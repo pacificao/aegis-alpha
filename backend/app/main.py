@@ -118,7 +118,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 1, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": "DISCONNECTED", "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 1, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": RobinhoodBrokerAdapter(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -127,6 +127,8 @@ def phase_status(tasks: list[Task]) -> TaskStatus:
         return TaskStatus.COMPLETE
     if TaskStatus.BLOCKED in statuses:
         return TaskStatus.BLOCKED
+    if TaskStatus.WAITING_FOR_CREDENTIALS in statuses:
+        return TaskStatus.WAITING_FOR_CREDENTIALS
     if TaskStatus.IN_PROGRESS in statuses or TaskStatus.COMPLETE in statuses:
         return TaskStatus.IN_PROGRESS
     return TaskStatus.NOT_STARTED
@@ -165,7 +167,7 @@ def activity(_: Principal = Depends(current_principal), db: Session = Depends(ge
 
 @app.get("/api/broker/status")
 def broker_status(_: Principal = Depends(current_principal)):
-    return RobinhoodBrokerAdapter().status()
+    return RobinhoodBrokerAdapter(settings).status()
 
 
 @app.get("/api/system")

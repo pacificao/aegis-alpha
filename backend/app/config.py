@@ -15,10 +15,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     session_secret: str = "test-only-not-for-deployment"
     session_ttl_seconds: int = 28_800
+    session_idle_ttl_seconds: int = 1_800
     allowed_origins: str = "http://localhost"
     trusted_hosts: str = "localhost,127.0.0.1"
     pam_bridge_socket: str = "/run/aegis-auth/pam.sock"
     auth_cookie_name: str = "aegis_session"
+    robinhood_mcp_url: str = "https://agent.robinhood.com/mcp/trading"
+    robinhood_connection_configured: bool = False
 
     @field_validator("aegis_trading_enabled")
     @classmethod
