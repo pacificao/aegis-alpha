@@ -8,9 +8,10 @@ htmlcov/
 node_modules/
 .next/
 coverage/
+test-results/
+playwright-report/
 dist/
 *.log
 .DS_Store
 postgres-data/
 redis-data/
-

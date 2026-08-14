@@ -56,6 +56,9 @@ services:
 
   frontend:
     build: ./frontend
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
     networks: [edge]
     depends_on:
       backend: {condition: service_healthy}
@@ -67,6 +70,7 @@ services:
 
   nginx:
     image: nginx:1.29.1-alpine
+    user: "101:101"
     ports:
       - "80:8080"
     volumes:
@@ -76,7 +80,7 @@ services:
       frontend: {condition: service_healthy}
       backend: {condition: service_healthy}
     read_only: true
-    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     restart: unless-stopped
