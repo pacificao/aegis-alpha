@@ -9,7 +9,7 @@
 
 ## Verified 2026-08-14
 
-- Private GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, local `main`, `develop`, and `feature/phase-1-core` workflow. Promotion/push and CI verification remain part of the release sequence.
+- Private GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, local `main`, `develop`, and `feature/phase-1-core` workflow. Feature-to-develop PR #1 passed all three GitHub Actions jobs and was merged.
 - Compose stack: PostgreSQL, Redis, FastAPI, Next.js, and Nginx healthy. Alembic is at `0003_expand_task_status`.
 - Public listeners: SSH 22 and Nginx HTTP 80 only. UFW is active, default-deny inbound, allowing 22/80/443. Ports 3000, 5432, 6379, and 8000 have no host listeners.
 - Host PAM bridge active; only `nathan` is accepted. Invalid authentication fails with 401, valid Ubuntu PAM login was manually verified by Nathan earlier on 2026-08-14. Passwords are not stored or application-logged.
@@ -23,6 +23,6 @@
 ## Known limitations / next exact work
 
 1. Complete Robinhood Trading MCP desktop OAuth/onboarding, then verify read-only account synchronization without exposing credentials or enabling orders.
-2. Push the reviewed feature/develop/main sequence and verify GitHub Actions. Branch protection remains blocked until a GitHub plan supporting protected private branches is available.
+2. Promote reviewed develop to main through a release PR; GitHub Actions passed on PR #1. Branch protection remains blocked until a GitHub plan supporting protected private branches is available.
 3. Rerun the complete Playwright suite in an execution window that allows all four tests to finish.
 4. Only after acceptance passes: tag `v0.1.0-core`, push it, finish privileged cleanup, and verify `sudo -n true` fails.
