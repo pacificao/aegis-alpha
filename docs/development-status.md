@@ -10,6 +10,7 @@
 ## Verified 2026-08-14
 
 - Private GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, local `main`, `develop`, and `feature/phase-1-core` workflow. Feature-to-develop PR #1 passed all three GitHub Actions jobs and was merged.
+- Host Docker Buildx plugin installed and verified: `docker-buildx 0.30.1-0ubuntu1~24.04.1`; `docker buildx version` reports 0.30.1.
 - Compose stack: PostgreSQL, Redis, FastAPI, Next.js, and Nginx healthy. Alembic is at `0003_expand_task_status`.
 - Public listeners: SSH 22 and Nginx HTTP 80 only. UFW is active, default-deny inbound, allowing 22/80/443. Ports 3000, 5432, 6379, and 8000 have no host listeners.
 - Host PAM bridge active; only `nathan` is accepted. Invalid authentication fails with 401, valid Ubuntu PAM login was manually verified by Nathan earlier on 2026-08-14. Passwords are not stored or application-logged.
