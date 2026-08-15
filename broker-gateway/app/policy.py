@@ -1,4 +1,6 @@
 """Fail-closed Phase 1 Robinhood MCP policy."""
+from urllib.parse import urlparse
+
 READ_ONLY_TOOLS = frozenset({
     "get_accounts", "get_portfolio", "get_realized_pnl", "get_pnl_trade_history", "search",
     "get_watchlists", "get_watchlist_items", "get_option_watchlist", "get_popular_watchlists",
@@ -19,3 +21,13 @@ def is_tool_allowed(name: str) -> bool:
 def enforce_tool_allowed(name: str) -> None:
     if not is_tool_allowed(name):
         raise PermissionError(f"Robinhood MCP tool is prohibited in Phase 1: {name}")
+
+
+def validate_authorization_url(url: str) -> str:
+    """Allow browser redirects only to Robinhood HTTPS origins."""
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    official_host = hostname == "robinhood.com" or hostname.endswith(".robinhood.com")
+    if parsed.scheme != "https" or not official_host or parsed.port not in {None, 443}:
+        raise RuntimeError("Robinhood returned an untrusted authorization URL")
+    return url
