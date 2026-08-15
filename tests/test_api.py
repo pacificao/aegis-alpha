@@ -10,7 +10,7 @@ from app.gateway import BrokerGatewayClient
 def broker_gateway_stub(monkeypatch):
     monkeypatch.setattr(BrokerGatewayClient, "status", lambda self: {"status": "NOT_CONFIGURED", "detail": "authorization has not been completed", "mode": "READ_ONLY", "trading": "DISABLED"})
 
-principal = Principal(username="nathan", session_id="test", csrf_token="csrf")
+principal = Principal(username="test-operator", session_id="test", csrf_token="csrf")
 
 
 def test_health_is_public_and_trading_disabled():
@@ -72,11 +72,11 @@ def test_robinhood_mcp_config_is_persisted_and_rejects_secrets():
 
             changed = client.patch(
                 "/api/broker/robinhood/config",
-                json={"connection_name": "Nathan Robinhood Agentic", "endpoint": "https://agent.robinhood.com/mcp/trading"},
+                json={"connection_name": "Test Robinhood Agentic", "endpoint": "https://agent.robinhood.com/mcp/trading"},
                 headers={"X-CSRF-Token": "csrf"},
             )
             assert changed.status_code == 200
-            assert changed.json()["connection_name"] == "Nathan Robinhood Agentic"
+            assert changed.json()["connection_name"] == "Test Robinhood Agentic"
 
             secret_attempt = client.patch(
                 "/api/broker/robinhood/config",

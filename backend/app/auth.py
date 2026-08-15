@@ -69,7 +69,7 @@ def enforce_login_rate_limit(request: Request, username: str) -> None:
 
 
 async def authenticate_with_pam_bridge(username: str, password: str, settings: Settings) -> bool:
-    if username != "nathan":
+    if not settings.authorized_user or username != settings.authorized_user:
         return False
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(settings.pam_bridge_socket), timeout=2)
@@ -96,9 +96,10 @@ def current_principal(
         data = store.get(aegis_session)
     except redis.RedisError:
         raise HTTPException(status_code=503, detail="Session service unavailable") from None
-    if not data or data.get("username") != "nathan":
+    settings = store.settings
+    if not settings.authorized_user or not data or data.get("username") != settings.authorized_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
-    return Principal(username="nathan", session_id=aegis_session, csrf_token=data["csrf"])
+    return Principal(username=settings.authorized_user, session_id=aegis_session, csrf_token=data["csrf"])
 
 
 def csrf_protected(
@@ -108,4 +109,3 @@ def csrf_protected(
     if not x_csrf_token or not secrets.compare_digest(x_csrf_token, principal.csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
     return principal
-

@@ -15,7 +15,7 @@ import time
 from collections import deque
 
 SOCKET_PATH = "/run/aegis-auth/pam.sock"
-AUTHORIZED_USERNAME = "nathan"
+AUTHORIZED_USERNAME = os.environ.get("AEGIS_AUTHORIZED_USER", "")
 BACKEND_UID = 100
 BACKEND_GID = 101
 MAX_REQUEST_BYTES = 4096
@@ -151,6 +151,8 @@ class Server(socketserver.ThreadingUnixStreamServer):
 
 
 def main() -> None:
+    if not AUTHORIZED_USERNAME:
+        raise RuntimeError("AEGIS_AUTHORIZED_USER must be configured")
     os.makedirs(os.path.dirname(SOCKET_PATH), mode=0o750, exist_ok=True)
     os.chown(os.path.dirname(SOCKET_PATH), 0, BACKEND_GID)
     os.chmod(os.path.dirname(SOCKET_PATH), 0o750)
