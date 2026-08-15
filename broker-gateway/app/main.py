@@ -17,12 +17,13 @@ from .policy import READ_ONLY_TOOLS, enforce_tool_allowed, validate_authorizatio
 from .storage import EncryptedFileTokenStorage
 
 MCP_URL = "https://agent.robinhood.com/mcp/trading"
-PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://aegis-alpha.pacificao.com")
-CALLBACK_URL = f"{PUBLIC_BASE_URL}/api/broker/robinhood/oauth/callback"
+AEGIS_UI_URL = os.environ.get("AEGIS_UI_URL", "https://aegis-alpha.pacificao.com").rstrip("/")
+OAUTH_CALLBACK_BASE_URL = os.environ.get("OAUTH_CALLBACK_BASE_URL", AEGIS_UI_URL).rstrip("/")
+CALLBACK_URL = f"{OAUTH_CALLBACK_BASE_URL}/api/broker/robinhood/oauth/callback"
 SHARED_SECRET = os.environ.get("BROKER_GATEWAY_SHARED_SECRET", "")
 AUTHORIZATION_ENABLED = os.environ.get("BROKER_AUTHORIZATION_ENABLED", "false").lower() == "true"
-if not PUBLIC_BASE_URL.startswith("https://"):
-    raise RuntimeError("PUBLIC_BASE_URL must use HTTPS")
+if not AEGIS_UI_URL.startswith("https://") or not OAUTH_CALLBACK_BASE_URL.startswith("https://"):
+    raise RuntimeError("Aegis UI and OAuth callback URLs must use HTTPS")
 if len(SHARED_SECRET) < 32:
     raise RuntimeError("BROKER_GATEWAY_SHARED_SECRET must be at least 32 characters")
 storage = EncryptedFileTokenStorage(
@@ -150,7 +151,7 @@ async def oauth_callback(code: str | None = Query(default=None), state: str | No
     if not code or _callback is None or _callback.done():
         raise HTTPException(status_code=400, detail="No active authorization request")
     _callback.set_result((code, state))
-    return RedirectResponse(url=f"{PUBLIC_BASE_URL}/system?robinhood=authorized", status_code=303)
+    return RedirectResponse(url=f"{AEGIS_UI_URL}/system?robinhood=authorized", status_code=303)
 
 
 @app.post("/internal/disconnect", dependencies=[Depends(internal_auth)])
