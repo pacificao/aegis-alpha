@@ -46,3 +46,12 @@ class DevelopmentActivity(Base):
     detail: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
+
+class BrokerConnectionConfig(Base):
+    __tablename__ = "broker_connection_config"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    connection_name: Mapped[str] = mapped_column(String(80))
+    endpoint: Mapped[str] = mapped_column(String(255))
+    mode: Mapped[str] = mapped_column(String(20), default="READ_ONLY")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

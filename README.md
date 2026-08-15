@@ -29,12 +29,13 @@ docker compose down
 # Logs
 docker compose logs -f --tail=200
 
-# Backend tests
-docker compose run --rm backend pytest -q
+# Backend tests (module form preserves the application import path)
+docker compose run --rm backend python -m pytest -q
 
-# Frontend checks and tests
-docker compose run --rm frontend npm run lint
-docker compose run --rm frontend npm test -- --run
+# Frontend checks, tests, and production build
+docker build --target build -t aegis-alpha-frontend-test ./frontend
+docker run --rm --entrypoint npm aegis-alpha-frontend-test run lint
+docker run --rm --entrypoint npm aegis-alpha-frontend-test test -- --run
 
 # Full validation
 ./scripts/verify.sh
@@ -69,3 +70,4 @@ Architecture, roadmap, security boundaries, deployment planning, and current ver
 ## Public development endpoint
 
 The canonical endpoint is `https://aegis-alpha.pacificao.com`. HTTP and direct-IP UI requests redirect there; `http://144.126.211.97/health` remains available for direct diagnostics. TLS is renewed automatically with Certbot. Never submit the Linux password through a plaintext HTTP URL.
+The authenticated System page accepts only non-secret Robinhood MCP metadata: a display name and Robinhood’s fixed official endpoint. Complete brokerage authentication only through Robinhood’s official browser/OAuth flow; never enter a password or token into Aegis.

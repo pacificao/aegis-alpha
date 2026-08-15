@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Phase, Task, TaskStatus
+from .models import BrokerConnectionConfig, Phase, Task, TaskStatus
 from .roadmap_data import PHASES
 
 PHASE1_COMPLETE = {
@@ -14,6 +14,9 @@ PHASE1_BLOCKED = {4, 37, 38, 43, 47}
 
 
 def seed_roadmap(db: Session) -> None:
+    broker = db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider == "robinhood"))
+    if broker is None:
+        db.add(BrokerConnectionConfig(provider="robinhood", connection_name="Robinhood Agentic", endpoint="https://agent.robinhood.com/mcp/trading", mode="READ_ONLY"))
     for number, name, description, tasks in PHASES:
         phase = db.scalar(select(Phase).where(Phase.number == number))
         if phase is None:

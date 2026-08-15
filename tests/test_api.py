@@ -51,3 +51,39 @@ def test_broker_reports_not_configured_without_authorization():
     finally:
         app.dependency_overrides.clear()
 
+
+
+def test_robinhood_mcp_config_is_persisted_and_rejects_secrets():
+    app.dependency_overrides[current_principal] = lambda: principal
+    app.dependency_overrides[csrf_protected] = lambda: principal
+    try:
+        with TestClient(app) as client:
+            initial = client.get("/api/broker/robinhood/config")
+            assert initial.status_code == 200
+            assert initial.json()["endpoint"] == "https://agent.robinhood.com/mcp/trading"
+            assert initial.json()["mode"] == "READ_ONLY"
+            assert initial.json()["status"] == "NOT_CONFIGURED"
+
+            changed = client.patch(
+                "/api/broker/robinhood/config",
+                json={"connection_name": "Nathan Robinhood Agentic", "endpoint": "https://agent.robinhood.com/mcp/trading"},
+                headers={"X-CSRF-Token": "csrf"},
+            )
+            assert changed.status_code == 200
+            assert changed.json()["connection_name"] == "Nathan Robinhood Agentic"
+
+            secret_attempt = client.patch(
+                "/api/broker/robinhood/config",
+                json={"connection_name": "Unsafe", "endpoint": "https://agent.robinhood.com/mcp/trading", "token": "must-not-be-accepted"},
+                headers={"X-CSRF-Token": "csrf"},
+            )
+            assert secret_attempt.status_code == 422
+
+            arbitrary_endpoint = client.patch(
+                "/api/broker/robinhood/config",
+                json={"connection_name": "Unsafe", "endpoint": "https://example.com/mcp"},
+                headers={"X-CSRF-Token": "csrf"},
+            )
+            assert arbitrary_endpoint.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
