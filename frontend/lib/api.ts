@@ -1,4 +1,4 @@
-export type Status = "NOT_STARTED"|"IN_PROGRESS"|"COMPLETE"|"BLOCKED";
+export type Status = "NOT_STARTED"|"IN_PROGRESS"|"COMPLETE"|"BLOCKED"|"WAITING_FOR_CREDENTIALS";
 export type Task = {id:number;ordinal:number;title:string;status:Status;notes:string;updated_at:string};
 export type Phase = {id:number;number:number;name:string;description:string;status:Status;completion_percentage:number;tasks:Task[]};
 

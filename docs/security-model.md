@@ -7,6 +7,7 @@
 - Database, Redis, backend, and frontend are internal-only. Only Nginx publishes HTTP/HTTPS.
 - Secrets come from deployment secret storage/environment and never Git. Production secrets are unavailable in research or agent environments.
 - Audit activity records authenticated mutations without secrets.
+- The Robinhood console form accepts only a display name and the exact allowlisted official MCP endpoint. The API rejects extra fields and arbitrary endpoints; OAuth and brokerage secrets never enter Aegis.
 - Trading is disabled by configuration and absence of execution endpoints.
 
 Staging uses separate credentials, database, Redis, hostname, and restricted synthetic/paper data. Production uses an encrypted managed secret store or root-readable deployment-time secret files, never image build arguments, plus DigitalOcean secret injection, encrypted backups, least-privilege service identities, TLS, and a separate execution security domain. Brokerage credentials will live only in that domain.

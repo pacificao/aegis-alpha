@@ -22,7 +22,7 @@ test("unauthenticated application hydrates and renders the login boundary", asyn
   await expect(page.getByText("Trading execution is disabled")).toBeVisible();
 
   const assets = await page.locator('script[src], link[rel="stylesheet"]').evaluateAll((elements) =>
-    elements.map((element) => (element as HTMLScriptElement | HTMLLinkElement).src || (element as HTMLLinkElement).href),
+    elements.map((element) => element instanceof HTMLScriptElement ? element.src : (element as HTMLLinkElement).href),
   );
   expect(assets.length).toBeGreaterThan(0);
   for (const asset of assets) {

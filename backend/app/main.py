@@ -24,8 +24,8 @@ from .broker import RobinhoodBrokerAdapter
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import DevelopmentActivity, Phase, Task, TaskStatus
-from .schemas import PhaseOut, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DevelopmentActivity, Phase, Task, TaskStatus
+from .schemas import PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, TaskOut, TaskUpdate
 from .seed import seed_roadmap
 
 configure_logging()
@@ -168,6 +168,27 @@ def activity(_: Principal = Depends(current_principal), db: Session = Depends(ge
 @app.get("/api/broker/status")
 def broker_status(_: Principal = Depends(current_principal)):
     return RobinhoodBrokerAdapter(settings).status()
+
+
+@app.get("/api/broker/robinhood/config", response_model=RobinhoodConfigOut)
+def robinhood_config(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    config = db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider == "robinhood"))
+    if config is None:
+        raise HTTPException(status_code=503, detail="Robinhood configuration is not initialized")
+    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": RobinhoodBrokerAdapter(settings).status()["status"]})
+
+
+@app.patch("/api/broker/robinhood/config", response_model=RobinhoodConfigOut)
+def update_robinhood_config(payload: RobinhoodConfigUpdate, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    config = db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider == "robinhood"))
+    if config is None:
+        raise HTTPException(status_code=503, detail="Robinhood configuration is not initialized")
+    config.connection_name = payload.connection_name
+    config.endpoint = payload.endpoint
+    db.add(DevelopmentActivity(actor=principal.username, action="broker_config_updated", entity_type="broker_connection_config", entity_id=config.id, detail="Updated non-secret Robinhood MCP metadata; mode=READ_ONLY"))
+    db.commit()
+    db.refresh(config)
+    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": RobinhoodBrokerAdapter(settings).status()["status"]})
 
 
 @app.get("/api/system")
