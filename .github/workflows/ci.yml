@@ -13,7 +13,16 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements-dev.txt}
       - run: pip install -r backend/requirements-dev.txt
-      - run: PYTHONPATH=backend pytest -q
+      - run: PYTHONPATH=backend pytest -q tests
+  gateway:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: broker-gateway/requirements-dev.txt}
+      - run: pip install -r broker-gateway/requirements-dev.txt
+      - run: PYTHONPATH=broker-gateway pytest -q broker-gateway/tests
+
   frontend:
     runs-on: ubuntu-24.04
     defaults: {run: {working-directory: frontend}}
@@ -39,7 +48,14 @@ jobs:
           sudo chgrp -R 101 /etc/letsencrypt
           sudo chmod 0750 /etc/letsencrypt /etc/letsencrypt/live /etc/letsencrypt/live/aegis-alpha.pacificao.com
           sudo chmod 0640 /etc/letsencrypt/live/aegis-alpha.pacificao.com/privkey.pem
+      - name: Create CI-only broker encryption fixture
+        run: |
+          sudo install -d -o 10001 -g 10001 -m 0700 /var/lib/aegis-broker-gateway
+          sudo install -d -o root -g 10001 -m 0750 /etc/aegis
+          openssl rand -base64 32 | tr "+/" "-_" | sudo tee /etc/aegis/broker-gateway.key >/dev/null
+          sudo chown root:10001 /etc/aegis/broker-gateway.key
+          sudo chmod 0440 /etc/aegis/broker-gateway.key
       - run: docker compose up -d --wait
       - run: curl --fail http://127.0.0.1/health
       - run: test "$(curl -s -o /dev/null -w '%{http_code}' --insecure --resolve aegis-alpha.pacificao.com:443:127.0.0.1 https://aegis-alpha.pacificao.com/api/status)" = 401
-      - run: "! ss -ltn | grep -E ':(3000|5432|6379|8000)[[:space:]]'"
+      - run: "! ss -ltn | grep -E ':(3000|5432|6379|8000|8100)[[:space:]]'"

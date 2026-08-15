@@ -1,4 +1,9 @@
 .env
+.env.*
+!.env.example
+oauth-token.enc
+oauth-client.enc
+broker-gateway/data/
 .venv/
 __pycache__/
 *.py[cod]

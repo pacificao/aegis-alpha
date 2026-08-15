@@ -21,6 +21,7 @@ from .auth import (
     SessionStore,
 )
 from .broker import RobinhoodBrokerAdapter
+from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
@@ -118,7 +119,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 1, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": RobinhoodBrokerAdapter(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 1, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -167,7 +168,7 @@ def activity(_: Principal = Depends(current_principal), db: Session = Depends(ge
 
 @app.get("/api/broker/status")
 def broker_status(_: Principal = Depends(current_principal)):
-    return RobinhoodBrokerAdapter(settings).status()
+    return BrokerGatewayClient(settings).status()
 
 
 @app.get("/api/broker/robinhood/config", response_model=RobinhoodConfigOut)
@@ -175,7 +176,7 @@ def robinhood_config(_: Principal = Depends(current_principal), db: Session = De
     config = db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider == "robinhood"))
     if config is None:
         raise HTTPException(status_code=503, detail="Robinhood configuration is not initialized")
-    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": RobinhoodBrokerAdapter(settings).status()["status"]})
+    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": BrokerGatewayClient(settings).status()["status"]})
 
 
 @app.patch("/api/broker/robinhood/config", response_model=RobinhoodConfigOut)
@@ -188,7 +189,25 @@ def update_robinhood_config(payload: RobinhoodConfigUpdate, principal: Principal
     db.add(DevelopmentActivity(actor=principal.username, action="broker_config_updated", entity_type="broker_connection_config", entity_id=config.id, detail="Updated non-secret Robinhood MCP metadata; mode=READ_ONLY"))
     db.commit()
     db.refresh(config)
-    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": RobinhoodBrokerAdapter(settings).status()["status"]})
+    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": BrokerGatewayClient(settings).status()["status"]})
+
+
+@app.post("/api/broker/robinhood/connect")
+def robinhood_connect(principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    result = BrokerGatewayClient(settings).start_authorization()
+    if result.get("status") == "ERROR":
+        raise HTTPException(status_code=503, detail=result.get("detail", "Broker gateway unavailable"))
+    db.add(DevelopmentActivity(actor=principal.username, action="broker_authorization_started", entity_type="broker_connection_config", entity_id=1, detail="Started official Robinhood browser authorization; no credentials entered into Aegis"))
+    db.commit()
+    return result
+
+
+@app.post("/api/broker/robinhood/disconnect")
+def robinhood_disconnect(principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    result = BrokerGatewayClient(settings).disconnect()
+    db.add(DevelopmentActivity(actor=principal.username, action="broker_authorization_removed", entity_type="broker_connection_config", entity_id=1, detail="Removed protected Robinhood authorization material"))
+    db.commit()
+    return result
 
 
 @app.get("/api/system")

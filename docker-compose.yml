@@ -6,8 +6,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    volumes: [postgres_data:/var/lib/postgresql/data]
     networks: [data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -19,14 +18,31 @@ services:
   redis:
     image: redis:8.2.1-alpine
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
-    volumes:
-      - redis_data:/data
+    volumes: [redis_data:/data]
     networks: [data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  broker-gateway:
+    build: ./broker-gateway
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://aegis-alpha.pacificao.com}
+      BROKER_AUTHORIZATION_ENABLED: ${BROKER_AUTHORIZATION_ENABLED:-false}
+      BROKER_GATEWAY_SHARED_SECRET: ${BROKER_GATEWAY_SHARED_SECRET}
+      BROKER_GATEWAY_DATA_DIR: /var/lib/aegis-broker
+      BROKER_GATEWAY_KEY_FILE: /run/secrets/broker_key
+    volumes:
+      - ${BROKER_GATEWAY_DATA_DIR:-/var/lib/aegis-broker-gateway}:/var/lib/aegis-broker
+      - ${BROKER_GATEWAY_KEY_FILE:-/etc/aegis/broker-gateway.key}:/run/secrets/broker_key:ro
+    networks: [broker]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     restart: unless-stopped
 
   backend:
@@ -45,13 +61,16 @@ services:
       PAM_BRIDGE_SOCKET: ${PAM_BRIDGE_SOCKET}
       ROBINHOOD_MCP_URL: ${ROBINHOOD_MCP_URL:-https://agent.robinhood.com/mcp/trading}
       ROBINHOOD_CONNECTION_CONFIGURED: ${ROBINHOOD_CONNECTION_CONFIGURED:-false}
+      BROKER_GATEWAY_URL: ${BROKER_GATEWAY_URL:-http://broker-gateway:8100}
+      BROKER_GATEWAY_SHARED_SECRET: ${BROKER_GATEWAY_SHARED_SECRET}
     volumes:
       - /run/aegis-auth:/run/aegis-auth
       - ./tests:/app/tests:ro
-    networks: [edge, data]
+    networks: [edge, data, broker]
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
+      broker-gateway: {condition: service_healthy}
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
@@ -64,8 +83,7 @@ services:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
     networks: [edge]
-    depends_on:
-      backend: {condition: service_healthy}
+    depends_on: {backend: {condition: service_healthy}}
     read_only: true
     tmpfs: [/tmp, /app/.next/cache]
     security_opt: [no-new-privileges:true]
@@ -75,17 +93,16 @@ services:
   nginx:
     image: nginx:1.29.1-alpine
     user: "101:101"
-    ports:
-      - "80:8080"
-      - "443:8443"
+    ports: ["80:8080", "443:8443"]
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /var/lib/aegis-certbot:/var/www/certbot:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    networks: [edge]
+    networks: [edge, broker]
     depends_on:
       frontend: {condition: service_healthy}
       backend: {condition: service_healthy}
+      broker-gateway: {condition: service_healthy}
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
@@ -94,9 +111,8 @@ services:
 
 networks:
   edge:
-  data:
-    internal: true
+  data: {internal: true}
+  broker: {internal: true}
 volumes:
   postgres_data:
   redis_data:
-
