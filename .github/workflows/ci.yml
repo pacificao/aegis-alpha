@@ -32,6 +32,13 @@ jobs:
       - run: cp .env.example .env && sed -i 's/CHANGE_ME_GENERATE_A_RANDOM_VALUE/ci-only-random-value-000000000000/g' .env
       - run: docker compose config --quiet
       - run: docker compose build
+      - name: Create CI-only TLS fixture
+        run: |
+          sudo install -d -m 0755 /etc/letsencrypt/live/aegis-alpha.pacificao.com
+          sudo openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=aegis-alpha.pacificao.com" -keyout /etc/letsencrypt/live/aegis-alpha.pacificao.com/privkey.pem -out /etc/letsencrypt/live/aegis-alpha.pacificao.com/fullchain.pem
+          sudo chgrp -R 101 /etc/letsencrypt
+          sudo chmod 0750 /etc/letsencrypt /etc/letsencrypt/live /etc/letsencrypt/live/aegis-alpha.pacificao.com
+          sudo chmod 0640 /etc/letsencrypt/live/aegis-alpha.pacificao.com/privkey.pem
       - run: docker compose up -d --wait
       - run: curl --fail http://127.0.0.1/health
       - run: test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/status)" = 401
