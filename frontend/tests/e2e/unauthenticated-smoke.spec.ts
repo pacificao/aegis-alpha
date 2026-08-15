@@ -17,7 +17,7 @@ test("unauthenticated application hydrates and renders the login boundary", asyn
   expect(response?.ok()).toBeTruthy();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: "AEGIS ALPHA" })).toBeVisible();
-  await expect(page.getByLabel("Authorized user")).toHaveValue("nathan");
+  await expect(page.getByLabel("Authorized user")).toHaveValue("");
   await expect(page.getByRole("button", { name: "ENTER CONSOLE" })).toBeVisible();
   await expect(page.getByText("Trading execution is disabled")).toBeVisible();
 

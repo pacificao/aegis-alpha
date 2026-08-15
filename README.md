@@ -1,10 +1,12 @@
 # Aegis Alpha
 
+> **Publicly visible, proprietary software — not open source.** Viewing this repository grants no right to use, copy, modify, deploy, distribute, commercialize, or create derivative works. See [LICENSE](LICENSE).
+
 A private, auditable AI-assisted quantitative-investment platform. Phase 1 supplies the authenticated development console, FastAPI API, PostgreSQL persistence, Redis health/cache service, and Nginx boundary. Trading is hard-disabled.
 
 ## Prerequisites (Ubuntu 24.04)
 
-Docker Engine with the Compose plugin is required. If `docker --version` is unavailable, Nathan must install it using Docker's official Ubuntu instructions; see `docs/ubuntu-setup.md`. Node and Python are only required on the host for non-container development.
+Docker Engine with the Compose plugin is required. If `docker --version` is unavailable, the operator must install it using Docker's official Ubuntu instructions; see `docs/ubuntu-setup.md`. Node and Python are only required on the host for non-container development.
 
 ## Configure and start
 
@@ -56,7 +58,7 @@ Do not run these blindly. First confirm the detected SSH port and compare the pl
 
 ```bash
 ./scripts/ufw-plan.sh
-# Nathan runs the printed sudo commands only after verifying SSH access on a second session.
+# The operator runs the printed sudo commands only after verifying SSH access on a second session.
 ```
 
 Externally, Compose publishes only Nginx on ports 80/443. PostgreSQL, Redis, FastAPI, and Next.js have no host port mappings.
@@ -74,5 +76,5 @@ Architecture, roadmap, security boundaries, deployment planning, and current ver
 
 ## Public development endpoint
 
-The canonical endpoint is `https://aegis-alpha.pacificao.com`. HTTP and direct-IP UI requests redirect there; `http://144.126.211.97/health` remains available for direct diagnostics. TLS is renewed automatically with Certbot. Never submit the Linux password through a plaintext HTTP URL.
+The canonical endpoint is `https://aegis-alpha.pacificao.com`. HTTP and direct-IP UI requests redirect there; direct-IP `/health` remains available for diagnostics. TLS is renewed automatically with Certbot. Never submit the Linux password through a plaintext HTTP URL.
 The authenticated System page saves non-secret MCP metadata and initiates Robinhood’s official browser/OAuth flow through the isolated Aegis broker gateway. Never enter a Robinhood password or token into Aegis, and never authorize brokerage access on the AI-administered development host.

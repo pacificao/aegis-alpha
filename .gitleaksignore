@@ -1,0 +1,2 @@
+# Historical test-only placeholder removed by public-hardening change; never an active credential.
+24cb6efd0b43aa8d4dc1748476b712e5db0a41ff:backend/app/config.py:generic-api-key:27

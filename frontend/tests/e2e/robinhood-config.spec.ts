@@ -12,7 +12,7 @@ test("authenticated operator can save only official non-secret Robinhood MCP met
   await expect(page.getByText("rejects all order",{exact:false})).toBeVisible();
   await expect(page.getByText("Never enter a Robinhood password, token, API key, or private key",{exact:false})).toBeVisible();
   await expect(page.getByLabel("Official MCP endpoint")).toHaveValue("https://agent.robinhood.com/mcp/trading");
-  await page.getByLabel("Connection name").fill("Nathan Robinhood Agentic");
+  await page.getByLabel("Connection name").fill("Test Robinhood Agentic");
   await page.getByRole("button",{name:"SAVE MCP INFORMATION"}).click();
   await expect(page.getByText("Non-secret MCP configuration saved.")).toBeVisible();
   await page.getByLabel("Official MCP endpoint").fill("https://example.com/mcp");

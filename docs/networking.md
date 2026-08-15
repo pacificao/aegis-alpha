@@ -7,6 +7,6 @@ Before UFW changes, detect SSH from `sshd -T` or listening sockets, allow it fir
 
 ## Verified TLS endpoint
 
-`aegis-alpha.pacificao.com` resolves to `144.126.211.97`. Nginx publishes TCP 80 and 443; hostname HTTP requests redirect to HTTPS, and direct-IP requests redirect to the same trusted HTTPS hostname so login credentials are never submitted over plaintext HTTP. `http://144.126.211.97/health` remains directly available for diagnostics. PostgreSQL, Redis, FastAPI, and Next.js remain unbound from the host.
+`aegis-alpha.pacificao.com` resolves to the deployment address maintained outside Git. Nginx publishes TCP 80 and 443; hostname HTTP requests redirect to HTTPS, and direct-IP requests redirect to the same trusted HTTPS hostname so login credentials are never submitted over plaintext HTTP. Direct-IP `/health` remains available for diagnostics. PostgreSQL, Redis, FastAPI, and Next.js remain unbound from the host.
 
 Let's Encrypt certificate files remain outside Git under `/etc/letsencrypt`. `certbot.timer` is enabled, the webroot challenge is `/var/lib/aegis-certbot`, and the deploy hook reloads the containerized Nginx after renewal. The renewal simulation passed on 2026-08-15.

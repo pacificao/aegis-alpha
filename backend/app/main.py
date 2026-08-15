@@ -81,11 +81,11 @@ async def login(payload: LoginRequest, request: Request, response: Response, sto
     if not await authenticate_with_pam_bridge(payload.username, payload.password, settings):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     try:
-        session_id, csrf = store.create("nathan")
+        session_id, csrf = store.create(settings.authorized_user)
     except redis.RedisError:
         raise HTTPException(status_code=503, detail="Session service unavailable") from None
     response.set_cookie(settings.auth_cookie_name, session_id, max_age=settings.session_ttl_seconds, httponly=True, secure=settings.is_secure_cookie, samesite="strict", path="/")
-    return {"username": "nathan", "csrf_token": csrf, "expires_in": settings.session_ttl_seconds}
+    return {"username": settings.authorized_user, "csrf_token": csrf, "expires_in": settings.session_ttl_seconds}
 
 
 @app.post("/api/auth/logout")
@@ -214,4 +214,3 @@ def robinhood_disconnect(principal: Principal = Depends(csrf_protected), db: Ses
 def system(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     postgres, redis_status = service_checks(db)
     return {"application": "AEGIS ALPHA", "backend_version": settings.aegis_version, "environment": settings.aegis_env, "postgresql": postgres, "redis": redis_status, "uptime_seconds": round(time.monotonic() - started_at), "server_time": datetime.now(UTC), "trading": "DISABLED"}
-

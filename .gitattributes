@@ -1,0 +1,10 @@
+* text=auto
+
+# Exclude operator/development material from generated source archives.
+.github/ export-ignore
+docs/development-status.md export-ignore
+scripts/ export-ignore
+tests/ export-ignore
+frontend/tests/ export-ignore
+AGENTS.md export-ignore
+CONTRIBUTING.md export-ignore

@@ -6,11 +6,10 @@ if [[ -z "${ssh_port}" || ! "${ssh_port}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 echo "Detected SSH listening port: ${ssh_port}"
-echo "Review these commands. Keep a second SSH session open. Nathan must run them manually:"
+echo "Review these commands. Keep a second SSH session open. The operator must run them manually:"
 echo "sudo ufw allow ${ssh_port}/tcp comment 'SSH - add before enabling'"
 echo "sudo ufw allow 80/tcp comment 'Aegis HTTP'"
 echo "sudo ufw allow 443/tcp comment 'Aegis HTTPS'"
 echo "sudo ufw status numbered"
 echo "sudo ufw enable"
 echo "sudo ufw status verbose"
-
