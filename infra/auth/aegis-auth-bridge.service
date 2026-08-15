@@ -5,6 +5,7 @@ Before=docker.service
 
 [Service]
 Type=simple
+EnvironmentFile=/etc/aegis/auth-bridge.env
 ExecStart=/usr/local/lib/aegis-alpha/aegis_pam_bridge.py
 Restart=on-failure
 RestartSec=2s

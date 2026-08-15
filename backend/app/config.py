@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,9 +19,12 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost"
     trusted_hosts: str = "localhost,127.0.0.1"
     pam_bridge_socket: str = "/run/aegis-auth/pam.sock"
+    authorized_user: str = ""
     auth_cookie_name: str = "aegis_session"
     robinhood_mcp_url: str = "https://agent.robinhood.com/mcp/trading"
     robinhood_connection_configured: bool = False
+    broker_gateway_url: str = "http://broker-gateway:8100"
+    broker_gateway_shared_secret: str = Field(default="", min_length=32)
 
     @field_validator("aegis_trading_enabled")
     @classmethod
@@ -38,4 +41,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

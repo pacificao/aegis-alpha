@@ -1,10 +1,16 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from app.auth import Principal, csrf_protected, current_principal
 from app.main import app
+from app.gateway import BrokerGatewayClient
 
 
-principal = Principal(username="nathan", session_id="test", csrf_token="csrf")
+@pytest.fixture(autouse=True)
+def broker_gateway_stub(monkeypatch):
+    monkeypatch.setattr(BrokerGatewayClient, "status", lambda self: {"status": "NOT_CONFIGURED", "detail": "authorization has not been completed", "mode": "READ_ONLY", "trading": "DISABLED"})
+
+principal = Principal(username="test-operator", session_id="test", csrf_token="csrf")
 
 
 def test_health_is_public_and_trading_disabled():
@@ -66,11 +72,11 @@ def test_robinhood_mcp_config_is_persisted_and_rejects_secrets():
 
             changed = client.patch(
                 "/api/broker/robinhood/config",
-                json={"connection_name": "Nathan Robinhood Agentic", "endpoint": "https://agent.robinhood.com/mcp/trading"},
+                json={"connection_name": "Test Robinhood Agentic", "endpoint": "https://agent.robinhood.com/mcp/trading"},
                 headers={"X-CSRF-Token": "csrf"},
             )
             assert changed.status_code == 200
-            assert changed.json()["connection_name"] == "Nathan Robinhood Agentic"
+            assert changed.json()["connection_name"] == "Test Robinhood Agentic"
 
             secret_attempt = client.patch(
                 "/api/broker/robinhood/config",
@@ -85,5 +91,22 @@ def test_robinhood_mcp_config_is_persisted_and_rejects_secrets():
                 headers={"X-CSRF-Token": "csrf"},
             )
             assert arbitrary_endpoint.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_robinhood_browser_authorization_and_disconnect_are_csrf_protected(monkeypatch):
+    monkeypatch.setattr(BrokerGatewayClient, "start_authorization", lambda self: {"status": "AUTHORIZING", "authorization_url": "https://robinhood.example/authorize"})
+    monkeypatch.setattr(BrokerGatewayClient, "disconnect", lambda self: {"status": "NOT_CONFIGURED", "trading": "DISABLED", "mode": "READ_ONLY"})
+    app.dependency_overrides[current_principal] = lambda: principal
+    app.dependency_overrides[csrf_protected] = lambda: principal
+    try:
+        with TestClient(app) as client:
+            started = client.post("/api/broker/robinhood/connect", headers={"X-CSRF-Token": "csrf"})
+            assert started.status_code == 200
+            assert started.json()["status"] == "AUTHORIZING"
+            removed = client.post("/api/broker/robinhood/disconnect", headers={"X-CSRF-Token": "csrf"})
+            assert removed.status_code == 200
+            assert removed.json()["trading"] == "DISABLED"
     finally:
         app.dependency_overrides.clear()
