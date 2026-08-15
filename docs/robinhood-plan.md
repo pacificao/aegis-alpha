@@ -1,11 +1,25 @@
 # Robinhood official integration boundary
 
-Verified against Robinhood's official Agentic Trading documentation on 2026-08-14. The supported endpoint is `https://agent.robinhood.com/mcp/trading`. Connection uses a desktop browser OAuth/onboarding flow and a dedicated Agentic account. The MCP can expose account numbers, balances, positions, transactions, orders, watchlists, and scans, and it is also capable of placing orders; therefore Aegis must never attach it directly to an AI research process or expose write tools in Phase 1.
+Verified against Robinhood's official Agentic Trading documentation on 2026-08-15. The supported endpoint is `https://agent.robinhood.com/mcp/trading`. Robinhood authentication uses its browser OAuth/onboarding flow; Aegis never asks for or stores a Robinhood password, pasted bearer token, API key, or private key.
 
-Phase 1 implements only a provider-neutral `BrokerAdapter.status()` boundary and `RobinhoodBrokerAdapter` with `NOT_CONFIGURED`, `CONNECTED`, `DISCONNECTED`, and `ERROR` as the allowed operational vocabulary. Current status is `NOT_CONFIGURED`. The application has no order method, credential field, or hidden execution capability. Read-only account synchronization remains WAITING_FOR_CREDENTIALS and must be mediated by a future allowlisted MCP gateway that rejects every mutation tool and redacts account identifiers from logs.
+## Implemented Phase 1 flow
 
-Official operator flow: in Codex Settings → MCP servers, choose Streamable HTTP and add `https://agent.robinhood.com/mcp/trading`; select the server and complete Robinhood's desktop authentication/onboarding. Do not paste a password or token into chat. Successful completion means the MCP reports authenticated and read-only account queries can be verified through the allowlisted gateway while Aegis still reports trading DISABLED.
+1. Nathan signs in to Aegis and opens **System**.
+2. Aegis shows the fixed official endpoint and requires an explicit browser confirmation.
+3. The backend sends a narrow connect request to the broker gateway. It cannot issue arbitrary MCP tool calls.
+4. The gateway redirects the browser to Robinhood's official authorization page.
+5. Robinhood returns to Aegis's exact OAuth callback URL.
+6. The gateway encrypts OAuth client/token state at rest, lists the advertised tools, rejects unknown or mutation tools, and validates only `get_accounts`.
+7. Aegis reports `CONNECTED`, `DISCONNECTED`, `ERROR`, or `NOT_CONFIGURED`; trading always reports `DISABLED`.
 
-## Console UX decision
+The gateway has no generic call-tool HTTP route. Its exact allowlist contains read-only account, portfolio, position, market-data, order-history, watchlist-read, scan-read, and option-discovery tools. All `place_*`, `cancel_*`, `review_*`, watchlist mutations, scan mutations, and unknown tools are denied. Phase 1 has no live-order path.
 
-The System page now provides an authenticated form for user-entered, non-secret MCP metadata: a connection display name and the fixed official endpoint. The API uses an extra-fields-forbidden schema and rejects every endpoint except `https://agent.robinhood.com/mcp/trading`; the database records mode as `READ_ONLY`. The form explicitly prohibits usernames/passwords, tokens, API keys, and private keys. Official Agentic Trading authentication remains in the MCP client’s browser/OAuth flow. A future “Check connection” action requires a server-side allowlisted read-only gateway. The console must never accept or proxy brokerage credentials or expose MCP order tools during Phase 1.
+## Credential isolation requirement
+
+OAuth must not be completed on this development host. An operator with Docker administration can read container-mounted files and is effectively root; because AI development agents administer this host, local filesystem permissions alone cannot satisfy the permanent credential boundary.
+
+Deploy `broker-gateway` into a separate execution environment that AI development agents cannot administer. Give only that environment access to its encryption key and encrypted token directory. Expose only the exact OAuth callback through Nginx; do not publish port 8100. After that isolation is verified, Nathan can click **Connect Robinhood** in Aegis and complete the official browser flow without sharing credentials in chat.
+
+Current development status: `NOT_CONFIGURED`; read-only synchronization is `WAITING_FOR_CREDENTIALS / AUTHORIZATION`. This is intentional and must not be bypassed.
+
+`BROKER_AUTHORIZATION_ENABLED` defaults to `false`. The gateway rejects both authorization start and OAuth callback while false, and Aegis disables the Connect button. Set it to `true` only in the isolated execution deployment after its access boundary has been verified.

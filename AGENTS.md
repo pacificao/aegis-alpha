@@ -10,6 +10,7 @@
 6. Every dollar moved must be explainable and auditable.
 7. Research and live execution are separate security domains.
 8. Production credentials and brokerage secrets are never available to AI development agents.
+8a. Never complete broker OAuth on a host or container runtime administered by an AI development agent.
 9. Robinhood is the first planned broker; broker interfaces must remain provider-neutral.
 10. GitHub is the permanent source of truth.
 11. Ubuntu is the runtime foundation.
