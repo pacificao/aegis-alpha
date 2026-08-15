@@ -41,5 +41,5 @@ jobs:
           sudo chmod 0640 /etc/letsencrypt/live/aegis-alpha.pacificao.com/privkey.pem
       - run: docker compose up -d --wait
       - run: curl --fail http://127.0.0.1/health
-      - run: test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/status)" = 401
+      - run: test "$(curl -s -o /dev/null -w '%{http_code}' --insecure --resolve aegis-alpha.pacificao.com:443:127.0.0.1 https://aegis-alpha.pacificao.com/api/status)" = 401
       - run: "! ss -ltn | grep -E ':(3000|5432|6379|8000)[[:space:]]'"
