@@ -2,15 +2,14 @@
 
 - Current phase: Phase 1 — Aegis Core / Foundation
 - Current version: `0.1.0-core-dev`
-- Verified Phase 1 roadmap state: 67/69 COMPLETE (97% rounded); 1 BLOCKED; 1 WAITING_FOR_CREDENTIALS
-- BLOCKED: task 48, GitHub branch protection. The private repository and CI exist, but GitHub returned HTTP 403 because protected branches for this private repository require a plan upgrade. The repository must not be made public to bypass this.
+- Verified Phase 1 roadmap state: 68/69 COMPLETE (99% rounded); 0 BLOCKED; 1 WAITING_FOR_CREDENTIALS
 - WAITING_FOR_CREDENTIALS: task 61, official Robinhood Trading MCP OAuth/onboarding and read-only connectivity verification.
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
 
 - Repository visibility is public but licensing is proprietary/all-rights-reserved. Public-hardening removes embedded operator/host identifiers, keeps deployment state outside Git, adds CODEOWNERS, security reporting, Dependabot, and full-history Gitleaks CI. GitHub secret scanning, push protection, vulnerability alerts, security updates, and private vulnerability reporting are enabled where the account plan supports them.
-- Private GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, local `main`, `develop`, and `feature/phase-1-core` workflow. Feature-to-develop PR #1 passed all three GitHub Actions jobs and was merged.
+- Public, proprietary GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, protected `main`/`develop`, and `feature/*` workflow. Both protected branches require PRs plus backend, Compose, frontend, gateway, and secret-scan checks; admin enforcement is enabled and force-push/deletion are disabled.
 - Host Docker Buildx plugin installed and verified: `docker-buildx 0.30.1-0ubuntu1~24.04.1`; `docker buildx version` reports 0.30.1.
 - Compose stack: PostgreSQL, Redis, isolated broker gateway, FastAPI, Next.js, and Nginx healthy. Alembic is at `0004_broker_connection_config` (head).
 - Public listeners: SSH 22 and Nginx HTTP 80/HTTPS 443. UFW is active, default-deny inbound, allowing 22/80/443. `aegis-alpha.pacificao.com` uses a valid Let's Encrypt certificate; HTTP and direct-IP UI traffic redirect to HTTPS, with direct-IP `/health` retained. Ports 3000, 5432, 6379, 8000, and 8100 have no host listeners.
@@ -26,5 +25,4 @@
 ## Known limitations / next exact work
 
 1. Deploy the broker gateway into a separate execution security domain inaccessible to AI development agents; then the operator completes OAuth from the Aegis browser and Aegis verifies its read-only account sync.
-2. Branch protection remains blocked until a GitHub plan supporting protected private branches is available.
-3. Only after acceptance passes: tag `v0.1.0-core`, push it, finish privileged cleanup, and verify `sudo -n true` fails.
+2. Only after acceptance passes: tag `v0.1.0-core`, push it, finish privileged cleanup, and verify `sudo -n true` fails.
