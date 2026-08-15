@@ -13,7 +13,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import OAuthClientMetadata
 from pydantic import AnyUrl
 
-from .policy import READ_ONLY_TOOLS, enforce_tool_allowed
+from .policy import READ_ONLY_TOOLS, enforce_tool_allowed, validate_authorization_url
 from .storage import EncryptedFileTokenStorage
 
 MCP_URL = "https://agent.robinhood.com/mcp/trading"
@@ -34,6 +34,12 @@ _flow_task: asyncio.Task | None = None
 _auth_url: asyncio.Future | None = None
 _callback: asyncio.Future | None = None
 _state = {"status": "NOT_CONFIGURED", "detail": "authorization has not been completed", "last_sync_at": None, "allowed_tools": 0, "blocked_tools": 0}
+
+
+async def call_read_only_tool(session: ClientSession, name: str, arguments: dict):
+    """The gateway's only MCP invocation path; every call is policy checked."""
+    enforce_tool_allowed(name)
+    return await session.call_tool(name, arguments)
 
 
 def internal_auth(x_aegis_gateway_key: str = Header(default="")) -> None:
@@ -63,7 +69,7 @@ async def connect_and_validate() -> None:
 
     async def redirect_handler(url: str) -> None:
         if _auth_url and not _auth_url.done():
-            _auth_url.set_result(url)
+            _auth_url.set_result(validate_authorization_url(url))
 
     async def callback_handler() -> tuple[str, str | None]:
         if _callback is None:
@@ -93,8 +99,7 @@ async def connect_and_validate() -> None:
                     blocked = names - allowed
                     if not {"get_accounts", "get_portfolio"}.issubset(allowed):
                         raise RuntimeError("Required read-only Robinhood tools were not advertised")
-                    enforce_tool_allowed("get_accounts")
-                    result = await session.call_tool("get_accounts", {})
+                    result = await call_read_only_tool(session, "get_accounts", {})
                     if result.isError:
                         raise RuntimeError("Read-only account synchronization failed")
                     _state.update(status="CONNECTED", detail="Official MCP authorized; mutation tools blocked", last_sync_at=datetime.now(UTC).isoformat(), allowed_tools=len(allowed), blocked_tools=len(blocked))
