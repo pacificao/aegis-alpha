@@ -9,6 +9,7 @@
 ## Verified 2026-08-14 through 2026-08-15
 
 - Repository visibility is public but licensing is proprietary/all-rights-reserved. Public-hardening removes embedded operator/host identifiers, keeps deployment state outside Git, adds CODEOWNERS, security reporting, Dependabot, and full-history Gitleaks CI. GitHub secret scanning, push protection, vulnerability alerts, security updates, and private vulnerability reporting are enabled where the account plan supports them.
+- Independent dependency audits after the public transition report zero known vulnerabilities: backend and broker gateway `pip-audit`, plus frontend `npm audit`. FastAPI/Starlette, python-multipart, pytest, and cryptography were moved to fixed versions and their tests pass.
 - Public, proprietary GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, protected `main`/`develop`, and `feature/*` workflow. Both protected branches require PRs plus backend, Compose, frontend, gateway, and secret-scan checks; admin enforcement is enabled and force-push/deletion are disabled.
 - Host Docker Buildx plugin installed and verified: `docker-buildx 0.30.1-0ubuntu1~24.04.1`; `docker buildx version` reports 0.30.1.
 - Compose stack: PostgreSQL, Redis, isolated broker gateway, FastAPI, Next.js, and Nginx healthy. Alembic is at `0004_broker_connection_config` (head).
