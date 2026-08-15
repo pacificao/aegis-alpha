@@ -1,0 +1,3 @@
+# Aegis uses the host's standard authentication and account policy.
+@include common-auth
+@include common-account

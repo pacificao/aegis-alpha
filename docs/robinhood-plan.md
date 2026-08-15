@@ -1,0 +1,11 @@
+# Robinhood official integration boundary
+
+Verified against Robinhood's official Agentic Trading documentation on 2026-08-14. The supported endpoint is `https://agent.robinhood.com/mcp/trading`. Connection uses a desktop browser OAuth/onboarding flow and a dedicated Agentic account. The MCP can expose account numbers, balances, positions, transactions, orders, watchlists, and scans, and it is also capable of placing orders; therefore Aegis must never attach it directly to an AI research process or expose write tools in Phase 1.
+
+Phase 1 implements only a provider-neutral `BrokerAdapter.status()` boundary and `RobinhoodBrokerAdapter` with `NOT_CONFIGURED`, `CONNECTED`, `DISCONNECTED`, and `ERROR` as the allowed operational vocabulary. Current status is `NOT_CONFIGURED`. The application has no order method, credential field, or hidden execution capability. Read-only account synchronization remains WAITING_FOR_CREDENTIALS and must be mediated by a future allowlisted MCP gateway that rejects every mutation tool and redacts account identifiers from logs.
+
+Official operator flow: in Codex Settings → MCP servers, choose Streamable HTTP and add `https://agent.robinhood.com/mcp/trading`; select the server and complete Robinhood's desktop authentication/onboarding. Do not paste a password or token into chat. Successful completion means the MCP reports authenticated and read-only account queries can be verified through the allowlisted gateway while Aegis still reports trading DISABLED.
+
+## Console UX decision
+
+The System page now provides an authenticated form for user-entered, non-secret MCP metadata: a connection display name and the fixed official endpoint. The API uses an extra-fields-forbidden schema and rejects every endpoint except `https://agent.robinhood.com/mcp/trading`; the database records mode as `READ_ONLY`. The form explicitly prohibits usernames/passwords, tokens, API keys, and private keys. Official Agentic Trading authentication remains in the MCP client’s browser/OAuth flow. A future “Check connection” action requires a server-side allowlisted read-only gateway. The console must never accept or proxy brokerage credentials or expose MCP order tools during Phase 1.
