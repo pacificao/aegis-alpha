@@ -65,3 +65,7 @@ Externally, Compose publishes only Nginx on ports 80/443. PostgreSQL, Redis, Fas
 - stale build: run `docker compose build --no-cache` and restart.
 
 Architecture, roadmap, security boundaries, deployment planning, and current verified state are in `docs/`.
+
+## Public development endpoint
+
+The canonical endpoint is `https://aegis-alpha.pacificao.com`. HTTP and direct-IP UI requests redirect there; `http://144.126.211.97/health` remains available for direct diagnostics. TLS is renewed automatically with Certbot. Never submit the Linux password through a plaintext HTTP URL.

@@ -77,8 +77,11 @@ services:
     user: "101:101"
     ports:
       - "80:8080"
+      - "443:8443"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /var/lib/aegis-certbot:/var/www/certbot:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     networks: [edge]
     depends_on:
       frontend: {condition: service_healthy}
