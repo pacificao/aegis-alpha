@@ -24,3 +24,7 @@ After the separate gateway is deployed and administrative access has been remove
 If Robinhood advertises renamed or new read tools, Aegis blocks them until the allowlist and tests receive human review. If any validation fails, disconnect in Aegis and revoke the connection from Robinhood.
 
 Robinhood's official Agentic Trading MCP can expose trading tools. The OAuth connection by itself is therefore not the safety boundary; the isolated Aegis gateway, absence of order APIs, and later deterministic RiskEngine/Execution separation are mandatory controls.
+
+## Current dedicated target
+
+The prepared operator bootstrap targets Ubuntu 24.04 at private VPC address `10.124.0.4`, hostname `brokerage.aegis-alpha.pacificao.com`, and permits the Aegis server private address `10.124.0.3`. Nathan runs `scripts/bootstrap-broker-droplet.sh` as root from the DigitalOcean browser console. Review it before execution; it does not install an AI/development SSH credential.
