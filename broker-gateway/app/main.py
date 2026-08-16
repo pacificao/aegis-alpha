@@ -78,7 +78,10 @@ async def connect_and_validate() -> None:
         return await asyncio.wait_for(_callback, timeout=600)
 
     provider = OAuthClientProvider(
-        server_url="https://agent.robinhood.com",
+        # OAuth protected-resource metadata identifies the full MCP URL as the
+        # RFC 8707 resource. Using only the origin fails the SDK's resource
+        # binding validation before browser authorization can begin.
+        server_url=MCP_URL,
         client_metadata=OAuthClientMetadata(
             client_name="Aegis Alpha Read-Only Gateway",
             redirect_uris=[AnyUrl(CALLBACK_URL)],
