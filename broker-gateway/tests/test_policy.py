@@ -6,6 +6,7 @@ def test_robinhood_protected_resource_is_the_full_official_mcp_endpoint():
     source = (__import__("pathlib").Path(__file__).parents[1] / "app" / "main.py").read_text()
     assert 'server_url=MCP_URL' in source
     assert 'server_url="https://agent.robinhood.com"' not in source
+    assert 'scope="internal"' in source
 
 @pytest.mark.parametrize("name", ["get_accounts", "get_portfolio", "get_equity_positions", "get_equity_quotes"])
 def test_read_only_tools_are_allowed(name):
