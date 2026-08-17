@@ -4,11 +4,12 @@ from datetime import UTC, datetime
 
 import redis
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from .auth import (
@@ -25,8 +26,8 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DevelopmentActivity, Phase, Task, TaskStatus
-from .schemas import PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DevelopmentActivity, OperatorPreference, Phase, StrategyScenario, Task, TaskStatus
+from .schemas import OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, ScenarioUpdate, TaskOut, TaskUpdate
 from .seed import seed_roadmap
 
 configure_logging()
@@ -97,7 +98,7 @@ def logout(response: Response, principal: Principal = Depends(csrf_protected), s
 
 @app.get("/api/auth/me")
 def me(principal: Principal = Depends(current_principal)):
-    return {"username": principal.username, "csrf_token": principal.csrf_token}
+    return {"username": principal.username, "csrf_token": principal.csrf_token, "session_idle_seconds": settings.session_idle_ttl_seconds, "session_absolute_seconds": settings.session_ttl_seconds, "cookie_security": "HttpOnly; SameSite=Strict; Secure" if settings.is_secure_cookie else "HttpOnly; SameSite=Strict"}
 
 
 def service_checks(db: Session) -> tuple[str, str]:
@@ -119,7 +120,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 1, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 2, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -161,8 +162,8 @@ def update_task(task_id: int, payload: TaskUpdate, principal: Principal = Depend
 
 
 @app.get("/api/activity")
-def activity(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
-    rows = db.scalars(select(DevelopmentActivity).order_by(DevelopmentActivity.created_at.desc()).limit(20)).all()
+def activity(limit: int = Query(default=20, ge=1, le=100), _: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    rows = db.scalars(select(DevelopmentActivity).order_by(DevelopmentActivity.created_at.desc()).limit(limit)).all()
     return [{"id": row.id, "actor": row.actor, "action": row.action, "entity_type": row.entity_type, "entity_id": row.entity_id, "detail": row.detail, "created_at": row.created_at} for row in rows]
 
 
@@ -214,3 +215,73 @@ def robinhood_disconnect(principal: Principal = Depends(csrf_protected), db: Ses
 def system(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     postgres, redis_status = service_checks(db)
     return {"application": "AEGIS ALPHA", "backend_version": settings.aegis_version, "environment": settings.aegis_env, "postgresql": postgres, "redis": redis_status, "uptime_seconds": round(time.monotonic() - started_at), "server_time": datetime.now(UTC), "trading": "DISABLED"}
+
+
+@app.get("/api/portfolio")
+def portfolio(_: Principal = Depends(current_principal)):
+    broker = BrokerGatewayClient(settings).status()
+    return {"broker": "Robinhood", "connection": broker["status"], "mode": "READ_ONLY", "holdings_available": False, "positions": [], "detail": "Portfolio holdings synchronization belongs to Phase 9; Phase 2 exposes connection state only.", "trading": "DISABLED"}
+
+
+@app.get("/api/scenarios", response_model=list[ScenarioOut])
+def scenarios(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    return db.scalars(select(StrategyScenario).order_by(StrategyScenario.updated_at.desc())).all()
+
+
+@app.post("/api/scenarios", response_model=ScenarioOut, status_code=201)
+def create_scenario(payload: ScenarioCreate, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    scenario = StrategyScenario(**payload.model_dump())
+    db.add(scenario)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A scenario with that name already exists") from None
+    db.add(DevelopmentActivity(actor=principal.username, action="scenario_created", entity_type="strategy_scenario", entity_id=scenario.id, detail=f"Created research-only scenario: {scenario.name}"))
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+@app.patch("/api/scenarios/{scenario_id}", response_model=ScenarioOut)
+def update_scenario(scenario_id: int, payload: ScenarioUpdate, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    scenario = db.get(StrategyScenario, scenario_id)
+    if scenario is None:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    for key, value in payload.model_dump().items():
+        setattr(scenario, key, value)
+    db.add(DevelopmentActivity(actor=principal.username, action="scenario_updated", entity_type="strategy_scenario", entity_id=scenario.id, detail=f"Updated research-only scenario: {scenario.name}; lifecycle={scenario.lifecycle}"))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A scenario with that name already exists") from None
+    db.refresh(scenario)
+    return scenario
+
+
+def operator_preference(db: Session, username: str) -> OperatorPreference:
+    preference = db.scalar(select(OperatorPreference).where(OperatorPreference.username == username))
+    if preference is None:
+        preference = OperatorPreference(username=username, compact_mode=False, page_size=20, confirm_sensitive_actions=True)
+        db.add(preference)
+        db.commit()
+        db.refresh(preference)
+    return preference
+
+
+@app.get("/api/settings", response_model=OperatorPreferenceOut)
+def get_preferences(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    return operator_preference(db, principal.username)
+
+
+@app.patch("/api/settings", response_model=OperatorPreferenceOut)
+def update_preferences(payload: OperatorPreferenceUpdate, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    preference = operator_preference(db, principal.username)
+    preference.compact_mode = payload.compact_mode
+    preference.page_size = payload.page_size
+    preference.confirm_sensitive_actions = True
+    db.add(DevelopmentActivity(actor=principal.username, action="operator_preferences_updated", entity_type="operator_preference", entity_id=preference.id, detail="Updated console display preferences; sensitive-action confirmation remains required"))
+    db.commit()
+    db.refresh(preference)
+    return preference

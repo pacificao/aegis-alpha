@@ -2,7 +2,7 @@
 
 > **Publicly visible, proprietary software — not open source.** Viewing this repository grants no right to use, copy, modify, deploy, distribute, commercialize, or create derivative works. See [LICENSE](LICENSE).
 
-A private, auditable AI-assisted quantitative-investment platform. Phase 1 supplies the authenticated development console, FastAPI API, PostgreSQL persistence, Redis health/cache service, and Nginx boundary. Trading is hard-disabled.
+A private, auditable AI-assisted quantitative-investment platform. Phase 2 supplies an authenticated responsive operator console, portfolio-boundary status, persisted research scenarios, settings, activity history, FastAPI, PostgreSQL, Redis, and Nginx. Trading is hard-disabled.
 
 ## Prerequisites (Ubuntu 24.04)
 

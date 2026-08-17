@@ -1,8 +1,8 @@
 # Development Status
 
-- Current phase: Phase 1 — Aegis Core / Foundation
-- Current version: `0.1.0-core`
-- Verified Phase 1 roadmap state: 69/69 COMPLETE (100%); 0 BLOCKED; 0 WAITING_FOR_CREDENTIALS
+- Current phase: Phase 2 — Aegis Console
+- Current version: `0.2.0-console`
+- Verified Phase 1–2 roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; 0 BLOCKED; 0 WAITING_FOR_CREDENTIALS
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -17,7 +17,7 @@
 - Disconnect now atomically cancels and awaits an active OAuth task, cancels pending callback/authorization futures, clears encrypted registration/token data, and resets all in-memory flow references. Connect opens Robinhood in a separate browser tab while Aegis remains open; popup blocking is reported without starting a hidden authorization attempt.
 - Public, proprietary GitHub repository `pacificao/aegis-alpha`, authenticated `gh`, protected `main`/`develop`, and `feature/*` workflow. Both protected branches require PRs plus backend, Compose, frontend, gateway, and secret-scan checks; admin enforcement is enabled and force-push/deletion are disabled.
 - Host Docker Buildx plugin installed and verified: `docker-buildx 0.30.1-0ubuntu1~24.04.1`; `docker buildx version` reports 0.30.1.
-- Compose stack: PostgreSQL, Redis, isolated broker gateway, FastAPI, Next.js, and Nginx healthy. Alembic is at `0004_broker_connection_config` (head).
+- Compose stack: PostgreSQL, Redis, isolated broker gateway, FastAPI, Next.js, and Nginx healthy. Alembic is at `0005_phase2_console` (head).
 - Public listeners: SSH 22 and Nginx HTTP 80/HTTPS 443. UFW is active, default-deny inbound, allowing 22/80/443. `aegis-alpha.pacificao.com` uses a valid Let's Encrypt certificate; HTTP and direct-IP UI traffic redirect to HTTPS, with direct-IP `/health` retained. Ports 3000, 5432, 6379, 8000, and 8100 have no host listeners.
 - Host PAM bridge active; only the deployment-configured operator is accepted. Invalid authentication fails with 401, valid Ubuntu PAM login was manually verified earlier on 2026-08-14. Passwords are not stored or application-logged.
 - Sessions are Redis-backed with HttpOnly, SameSite=Strict cookies, 30-minute idle expiry, 8-hour absolute expiry, logout, CSRF tokens on mutations, application and Nginx login throttles.
@@ -34,5 +34,17 @@
 - Relay verification: broker gateway pytest 29/29 passed; backend pytest 7/7 passed; frontend production build passed; Vitest 1/1 passed; ESLint passed with 0 errors and the existing 1 navigation-style warning.
 - On 2026-08-17 Nathan completed Robinhood's desktop-only OAuth/onboarding flow through Aegis. The isolated gateway successfully exchanged the authorization code, established the official Trading MCP session, verified the required read-only tools, and completed read-only account synchronization. Aegis displayed `CONNECTED` and `READ_ONLY`; the roadmap milestone was persisted as COMPLETE with an audit activity. Trading remained `DISABLED` throughout.
 
-1. Nathan removes `/etc/sudoers.d/aegis-phase1`, runs `sudo -k`, and confirms `sudo -n true` fails.
-2. After privileged cleanup is verified, create and push the `v0.1.0-core` tag.
+Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
+
+## Verified 2026-08-17 — Phase 2
+
+- Authentication UX exposes the protected cookie policy plus 30-minute idle and 8-hour absolute session limits; all new APIs require authentication and all mutations require CSRF.
+- Dashboard and navigation accurately show Phase 2, Robinhood state, overall progress, and trading disabled. Responsive navigation supports narrow/mobile screens.
+- Portfolio displays only verified broker connection/mode and explicitly refuses to fabricate holdings before Phase 9 synchronization views.
+- Strategy Library persists bounded research scenarios. Dividend Farm is seeded with 24 adjustable parameters; custom research scenarios can be created and paused. API and database constraints reject paper/live states.
+- Settings persist display density/page size while sensitive-action confirmation is permanently required. Activity displays up to 100 audited authenticated mutations.
+- Migration `0005_phase2_console` applied after a PostgreSQL backup; Phase 1's 69 completed tasks persisted.
+- Backend pytest: 9/9 passed. Frontend build and TypeScript: passed. Vitest: 1/1. ESLint: 0 errors, 1 existing navigation warning. Browser authentication/hydration/assets/console checks: 8/8 passed. All six tested console pages returned 200; four unauthenticated Phase 2 APIs returned 401.
+- Dividend Farm is documented as an empirical hypothesis. Market data, backtesting, real-time paper simulation, deterministic risk, execution, controlled live, and autonomy remain later gated phases.
+
+Next: Phase 3 — Aegis Data. Trading remains disabled.
