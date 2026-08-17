@@ -1,0 +1,4 @@
+"use client";
+import {useEffect,useState} from "react";import AppShell from "@/components/AppShell";import Header from "@/components/Header";import {api} from "@/lib/api";
+type Event={id:number;actor:string;action:string;entity_type:string;detail:string;created_at:string};
+export default function ActivityPage(){const[events,setEvents]=useState<Event[]>([]);useEffect(()=>{api<Event[]>("/api/activity?limit=100").then(setEvents).catch(()=>{})},[]);return <AppShell><Header title="Activity" subtitle="Authenticated configuration and development audit events."/><section className="card"><div className="card-title">Latest events</div>{events.map(event=><div className="activity-row" key={event.id}><div><strong>{event.action.replaceAll("_"," ")}</strong><p>{event.detail}</p></div><div><span>{event.actor}</span><time>{new Date(event.created_at).toLocaleString()}</time></div></div>)}{!events.length&&<p className="sub">No activity recorded.</p>}</section></AppShell>}
