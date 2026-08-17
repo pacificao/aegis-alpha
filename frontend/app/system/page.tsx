@@ -43,17 +43,22 @@ export default function SystemPage(){
 
   async function connect(){
     if(!window.confirm("Continue to Robinhood in this browser? Aegis will permit read-only tools only; trading remains disabled."))return;
+    const authorizationWindow=window.open("about:blank","_blank");
+    if(!authorizationWindow){setMessage("Popup blocked. Allow popups for Aegis and try again.");return}
+    authorizationWindow.opener=null;
+    authorizationWindow.document.title="Opening Robinhood…";
+    authorizationWindow.document.body.textContent="Opening Robinhood authorization…";
     setSaving(true);setMessage("");
     try{
       const result=await api<{authorization_url:string|null;status:string}>("/api/broker/robinhood/connect",{method:"POST",headers:{"X-CSRF-Token":await csrf()}});
-      if(result.authorization_url){window.location.assign(result.authorization_url)}else{setMessage("Existing authorization is being validated.")}
-    }catch(error){setMessage(error instanceof Error?error.message:"Unable to start authorization")}finally{setSaving(false)}
+      if(result.authorization_url){authorizationWindow.location.href=result.authorization_url}else{authorizationWindow.close();setMessage("Existing authorization is being validated.")}
+    }catch(error){authorizationWindow.close();setMessage(error instanceof Error?error.message:"Unable to start authorization")}finally{setSaving(false)}
   }
 
   async function disconnect(){
     if(!window.confirm("Remove Aegis’s protected Robinhood authorization?"))return;
     setSaving(true);
-    try{await api("/api/broker/robinhood/disconnect",{method:"POST",headers:{"X-CSRF-Token":await csrf()}});setMessage("Robinhood authorization removed.");await refreshStatus()}
+    try{await api("/api/broker/robinhood/disconnect",{method:"POST",headers:{"X-CSRF-Token":await csrf()}});setMessage("Robinhood authorization and any pending connection attempt were cleared.");await refreshStatus()}
     catch(error){setMessage(error instanceof Error?error.message:"Unable to disconnect")}
     finally{setSaving(false)}
   }
