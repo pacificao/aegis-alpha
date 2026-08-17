@@ -87,6 +87,7 @@ async def connect_and_validate() -> None:
             redirect_uris=[AnyUrl(CALLBACK_URL)],
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
+            scope="internal",
         ),
         storage=storage,
         redirect_handler=redirect_handler,
