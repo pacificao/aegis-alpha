@@ -1,5 +1,5 @@
 import pytest
-from app.policy import enforce_tool_allowed, is_tool_allowed, validate_authorization_url
+from app.policy import enforce_tool_allowed, is_tool_allowed, parse_loopback_callback, validate_authorization_url
 
 
 def test_robinhood_protected_resource_is_the_full_official_mcp_endpoint():
@@ -41,3 +41,24 @@ def test_official_authorization_redirects_are_allowed(url):
 def test_untrusted_authorization_redirects_are_blocked(url):
     with pytest.raises(RuntimeError):
         validate_authorization_url(url)
+
+
+def test_loopback_callback_extracts_code_and_state():
+    assert parse_loopback_callback("http://127.0.0.1:8765/callback?code=temporary&state=expected") == ("temporary", "expected")
+
+
+@pytest.mark.parametrize("url", [
+    "https://127.0.0.1:8765/callback?code=x&state=y",
+    "http://localhost:8765/callback?code=x&state=y",
+    "http://127.0.0.1:9999/callback?code=x&state=y",
+    "http://127.0.0.1:8765/other?code=x&state=y",
+    "http://127.0.0.1:8765/callback?code=x",
+])
+def test_invalid_loopback_callbacks_fail_closed(url):
+    with pytest.raises(ValueError):
+        parse_loopback_callback(url)
+
+
+def test_denied_loopback_callback_is_not_accepted():
+    with pytest.raises(PermissionError):
+        parse_loopback_callback("http://127.0.0.1:8765/callback?error=access_denied&state=x")

@@ -14,7 +14,7 @@ CONFIG_DIR="/etc/aegis-broker"
 DATA_DIR="/var/lib/aegis-broker"
 
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates certbot curl docker.io docker-buildx git nginx ufw
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates certbot curl docker.io docker-buildx docker-compose-v2 git nginx ufw
 systemctl enable --now docker
 
 id nathan >/dev/null 2>&1 || adduser --disabled-password --gecos "" nathan
@@ -44,6 +44,7 @@ SHARED_SECRET="$(<"${CONFIG_DIR}/shared-secret")"
 cat > "${CONFIG_DIR}/gateway.env" <<EOF
 AEGIS_UI_URL=${AEGIS_UI}
 OAUTH_CALLBACK_BASE_URL=https://${BROKER_HOST}
+OAUTH_REDIRECT_URI=http://127.0.0.1:8765/callback
 BROKER_AUTHORIZATION_ENABLED=true
 BROKER_GATEWAY_SHARED_SECRET=${SHARED_SECRET}
 BROKER_GATEWAY_DATA_DIR=/var/lib/aegis-broker
@@ -100,6 +101,12 @@ server {
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-Proto https;
   }
+  location = /api/broker/robinhood/oauth/complete {
+    limit_req zone=broker burst=5 nodelay;
+    proxy_pass http://127.0.0.1:8100;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-Proto https;
+  }
   location /internal/ {
     allow ${AEGIS_VPC_IP};
     deny all;
@@ -116,8 +123,10 @@ nginx -t
 
 ufw default deny incoming
 ufw default allow outgoing
-SSHD_PORT="$(sshd -T | awk '$1 == "port" {print $2; exit}')"
-if [[ ! "${SSHD_PORT}" =~ ^[0-9]+$ ]] || ! ss -lnt | awk '{print $4}' | grep -Eq "[:.]${SSHD_PORT}$"; then
+sshd -T > /tmp/aegis-sshd-effective
+SSHD_PORT="$(awk '$1 == "port" {print $2; exit}' /tmp/aegis-sshd-effective)"
+ss -lntH > /tmp/aegis-listeners
+if [[ ! "${SSHD_PORT}" =~ ^[0-9]+$ ]] || ! grep -Eq "[:.]${SSHD_PORT}[[:space:]]" /tmp/aegis-listeners; then
   echo "Unable to verify the active SSH listener; refusing to enable UFW." >&2
   exit 1
 fi

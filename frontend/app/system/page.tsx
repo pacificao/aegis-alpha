@@ -18,6 +18,8 @@ export default function SystemPage(){
   const [endpoint,setEndpoint]=useState(OFFICIAL_ENDPOINT);
   const [message,setMessage]=useState("");
   const [saving,setSaving]=useState(false);
+  const [completionNonce,setCompletionNonce]=useState("");
+  const [callbackUrl,setCallbackUrl]=useState("");
 
   async function refreshStatus(){
     try{setStatus(await api<BrokerStatus>("/api/broker/status"))}catch{/* AuthGate handles session failures. */}
@@ -50,15 +52,25 @@ export default function SystemPage(){
     authorizationWindow.document.body.textContent="Opening Robinhood authorization…";
     setSaving(true);setMessage("");
     try{
-      const result=await api<{authorization_url:string|null;status:string}>("/api/broker/robinhood/connect",{method:"POST",headers:{"X-CSRF-Token":await csrf()}});
-      if(result.authorization_url){authorizationWindow.location.href=result.authorization_url}else{authorizationWindow.close();setMessage("Existing authorization is being validated.")}
+      const result=await api<{authorization_url:string|null;completion_nonce?:string;status:string}>("/api/broker/robinhood/connect",{method:"POST",headers:{"X-CSRF-Token":await csrf()}});
+      if(result.authorization_url&&result.completion_nonce){setCompletionNonce(result.completion_nonce);authorizationWindow.location.href=result.authorization_url}else{authorizationWindow.close();setMessage("Existing authorization is being validated.")}
     }catch(error){authorizationWindow.close();setMessage(error instanceof Error?error.message:"Unable to start authorization")}finally{setSaving(false)}
+  }
+
+  async function completeConnection(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();setSaving(true);setMessage("");
+    try{
+      const response=await fetch("https://brokerage.aegis-alpha.pacificao.com/api/broker/robinhood/oauth/complete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({callback_url:callbackUrl,completion_nonce:completionNonce})});
+      const body=await response.json().catch(()=>({detail:"Completion failed"}));
+      if(!response.ok)throw new Error(body.detail||"Completion failed");
+      setCallbackUrl("");setCompletionNonce("");setStatus(body);setMessage("Robinhood connected and read-only access validated.");
+    }catch(error){setMessage(error instanceof Error?error.message:"Unable to complete authorization")}finally{setSaving(false)}
   }
 
   async function disconnect(){
     if(!window.confirm("Remove Aegis’s protected Robinhood authorization?"))return;
     setSaving(true);
-    try{await api("/api/broker/robinhood/disconnect",{method:"POST",headers:{"X-CSRF-Token":await csrf()}});setMessage("Robinhood authorization and any pending connection attempt were cleared.");await refreshStatus()}
+    try{await api("/api/broker/robinhood/disconnect",{method:"POST",headers:{"X-CSRF-Token":await csrf()}});setCallbackUrl("");setCompletionNonce("");setMessage("Robinhood authorization and any pending connection attempt were cleared.");await refreshStatus()}
     catch(error){setMessage(error instanceof Error?error.message:"Unable to disconnect")}
     finally{setSaving(false)}
   }
@@ -85,6 +97,11 @@ export default function SystemPage(){
         <button className="primary" type="button" disabled={saving||endpoint!==OFFICIAL_ENDPOINT||!status?.authorization_enabled} onClick={connect}>CONNECT ROBINHOOD IN BROWSER</button>
         {status?.status!=="NOT_CONFIGURED"&&<button type="button" disabled={saving} onClick={disconnect}>DISCONNECT</button>}
       </div>
+      {completionNonce&&<form onSubmit={completeConnection} style={{marginTop:16}}>
+        <div className="field"><label htmlFor="oauth-callback-url">Robinhood localhost callback URL</label><input id="oauth-callback-url" value={callbackUrl} onChange={(event)=>setCallbackUrl(event.target.value)} placeholder="http://127.0.0.1:8765/callback?code=…&state=…" required/></div>
+        <p className="sub">After Robinhood approves, the localhost page may not load. Copy its complete address from the desktop browser and paste it here. It is sent directly to the isolated gateway and is not stored by Aegis.</p>
+        <button className="primary" disabled={saving||!callbackUrl.startsWith("http://127.0.0.1:8765/callback?")}>{saving?"VALIDATING…":"COMPLETE ROBINHOOD CONNECTION"}</button>
+      </form>}
       {!status?.authorization_enabled&&<p className="sub" style={{marginTop:14}}>Authorization is disabled on this development host. Deploy the gateway in the protected execution domain before connecting.</p>}
       <p className="sub" style={{marginTop:14}}>The isolated gateway encrypts authorization material and rejects all order, cancellation, review, watchlist-mutation, scan-mutation, and unknown MCP tools.</p>
     </section>
