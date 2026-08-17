@@ -1,9 +1,8 @@
 # Development Status
 
 - Current phase: Phase 1 — Aegis Core / Foundation
-- Current version: `0.1.0-core-dev`
-- Verified Phase 1 roadmap state: 68/69 COMPLETE (99% rounded); 0 BLOCKED; 1 WAITING_FOR_CREDENTIALS
-- WAITING_FOR_CREDENTIALS: task 61, official Robinhood Trading MCP OAuth/onboarding and read-only connectivity verification.
+- Current version: `0.1.0-core`
+- Verified Phase 1 roadmap state: 69/69 COMPLETE (100%); 0 BLOCKED; 0 WAITING_FOR_CREDENTIALS
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -33,6 +32,7 @@
 
 - Robinhood's hosted authorization page rejected the public HTTPS callback before redirecting to Aegis. A protected loopback relay is now implemented: the official OAuth flow redirects to `http://127.0.0.1:8765/callback`, the operator copies that complete URL into Aegis, and the browser submits it directly to the isolated gateway with a one-time nonce. The authorization code is never sent through the Aegis backend, persisted in PostgreSQL, or written to access logs. The gateway validates the exact scheme, address, port, path, state, origin, and nonce before exchanging the code and performing read-only validation.
 - Relay verification: broker gateway pytest 29/29 passed; backend pytest 7/7 passed; frontend production build passed; Vitest 1/1 passed; ESLint passed with 0 errors and the existing 1 navigation-style warning.
+- On 2026-08-17 Nathan completed Robinhood's desktop-only OAuth/onboarding flow through Aegis. The isolated gateway successfully exchanged the authorization code, established the official Trading MCP session, verified the required read-only tools, and completed read-only account synchronization. Aegis displayed `CONNECTED` and `READ_ONLY`; the roadmap milestone was persisted as COMPLETE with an audit activity. Trading remained `DISABLED` throughout.
 
-1. Deploy the broker gateway into a separate execution security domain inaccessible to AI development agents; then the operator completes OAuth from the Aegis browser and Aegis verifies its read-only account sync.
-2. Only after acceptance passes: tag `v0.1.0-core`, push it, finish privileged cleanup, and verify `sudo -n true` fails.
+1. Nathan removes `/etc/sudoers.d/aegis-phase1`, runs `sudo -k`, and confirms `sudo -n true` fails.
+2. After privileged cleanup is verified, create and push the `v0.1.0-core` tag.
