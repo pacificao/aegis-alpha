@@ -6,21 +6,23 @@ from contextlib import suppress
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from mcp import ClientSession
 from mcp.client.auth import OAuthClientProvider
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import OAuthClientMetadata
-from pydantic import AnyUrl
+from pydantic import AnyUrl, BaseModel, Field
 
-from .policy import READ_ONLY_TOOLS, enforce_tool_allowed, validate_authorization_url
+from .policy import READ_ONLY_TOOLS, enforce_tool_allowed, parse_loopback_callback, validate_authorization_url
 from .storage import EncryptedFileTokenStorage
 
 MCP_URL = "https://agent.robinhood.com/mcp/trading"
 AEGIS_UI_URL = os.environ.get("AEGIS_UI_URL", "https://aegis-alpha.pacificao.com").rstrip("/")
 OAUTH_CALLBACK_BASE_URL = os.environ.get("OAUTH_CALLBACK_BASE_URL", AEGIS_UI_URL).rstrip("/")
 CALLBACK_URL = f"{OAUTH_CALLBACK_BASE_URL}/api/broker/robinhood/oauth/callback"
+OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI", CALLBACK_URL)
 SHARED_SECRET = os.environ.get("BROKER_GATEWAY_SHARED_SECRET", "")
 AUTHORIZATION_ENABLED = os.environ.get("BROKER_AUTHORIZATION_ENABLED", "false").lower() == "true"
 if not AEGIS_UI_URL.startswith("https://") or not OAUTH_CALLBACK_BASE_URL.startswith("https://"):
@@ -32,9 +34,11 @@ storage = EncryptedFileTokenStorage(
     os.environ.get("BROKER_GATEWAY_KEY_FILE", "/run/secrets/broker_key"),
 )
 app = FastAPI(title="Aegis Broker Gateway", docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(CORSMiddleware, allow_origins=[AEGIS_UI_URL], allow_methods=["POST"], allow_headers=["Content-Type"])
 _flow_task: asyncio.Task | None = None
 _auth_url: asyncio.Future | None = None
 _callback: asyncio.Future | None = None
+_completion_nonce: str | None = None
 _state = {"status": "NOT_CONFIGURED", "detail": "authorization has not been completed", "last_sync_at": None, "allowed_tools": 0, "blocked_tools": 0}
 
 
@@ -85,7 +89,7 @@ async def connect_and_validate() -> None:
         server_url=MCP_URL,
         client_metadata=OAuthClientMetadata(
             client_name="Aegis Alpha Read-Only Gateway",
-            redirect_uris=[AnyUrl(CALLBACK_URL)],
+            redirect_uris=[AnyUrl(OAUTH_REDIRECT_URI)],
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
             scope="internal",
@@ -116,7 +120,7 @@ async def connect_and_validate() -> None:
 
 @app.post("/internal/connect/start", dependencies=[Depends(internal_auth)])
 async def connect_start():
-    global _flow_task, _auth_url, _callback
+    global _flow_task, _auth_url, _callback, _completion_nonce
     if not AUTHORIZATION_ENABLED:
         raise HTTPException(status_code=403, detail="Broker authorization is disabled in this environment")
     if _flow_task and not _flow_task.done():
@@ -124,13 +128,14 @@ async def connect_start():
     loop = asyncio.get_running_loop()
     _auth_url = loop.create_future()
     _callback = loop.create_future()
+    _completion_nonce = secrets.token_urlsafe(32)
     _state.update(status="AUTHORIZING", detail="Waiting for browser authorization")
     _flow_task = asyncio.create_task(connect_and_validate())
     done, _ = await asyncio.wait(
         {_auth_url, _flow_task}, timeout=30, return_when=asyncio.FIRST_COMPLETED
     )
     if _auth_url in done:
-        return {"authorization_url": _auth_url.result(), "status": "AUTHORIZING"}
+        return {"authorization_url": _auth_url.result(), "completion_nonce": _completion_nonce, "status": "AUTHORIZING"}
     if _flow_task in done:
         try:
             _flow_task.result()
@@ -144,6 +149,37 @@ async def connect_start():
     raise HTTPException(
         status_code=502, detail="Unable to start Robinhood authorization"
     )
+
+
+class CallbackRelay(BaseModel):
+    callback_url: str = Field(min_length=20, max_length=4096)
+    completion_nonce: str = Field(min_length=32, max_length=128)
+
+
+@app.post("/api/broker/robinhood/oauth/complete")
+async def oauth_complete(payload: CallbackRelay, request: Request):
+    global _completion_nonce
+    if request.headers.get("origin") != AEGIS_UI_URL:
+        raise HTTPException(status_code=403, detail="Untrusted completion origin")
+    if not _completion_nonce or not secrets.compare_digest(payload.completion_nonce, _completion_nonce):
+        raise HTTPException(status_code=403, detail="Invalid or expired completion request")
+    try:
+        code, state = parse_loopback_callback(payload.callback_url)
+    except PermissionError:
+        _completion_nonce = None
+        _state.update(status="ERROR", detail="Robinhood authorization was denied")
+        raise HTTPException(status_code=400, detail="Robinhood authorization was denied")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Paste the complete Robinhood localhost callback URL") from None
+    if _callback is None or _callback.done() or _flow_task is None:
+        raise HTTPException(status_code=400, detail="No active authorization request")
+    _completion_nonce = None
+    _callback.set_result((code, state))
+    try:
+        await asyncio.wait_for(asyncio.shield(_flow_task), timeout=45)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Robinhood authorization validation failed") from None
+    return public_state()
 
 
 @app.get("/api/broker/robinhood/oauth/callback")
@@ -161,7 +197,7 @@ async def oauth_callback(code: str | None = Query(default=None), state: str | No
 
 @app.post("/internal/disconnect", dependencies=[Depends(internal_auth)])
 async def disconnect():
-    global _flow_task, _auth_url, _callback
+    global _flow_task, _auth_url, _callback, _completion_nonce
     if _flow_task and not _flow_task.done():
         _flow_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -172,6 +208,7 @@ async def disconnect():
     _flow_task = None
     _auth_url = None
     _callback = None
+    _completion_nonce = None
     storage.clear()
     _state.update(status="NOT_CONFIGURED", detail="Authorization removed", last_sync_at=None, allowed_tools=0, blocked_tools=0)
     return public_state()

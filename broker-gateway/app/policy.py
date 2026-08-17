@@ -1,5 +1,5 @@
 """Fail-closed Phase 1 Robinhood MCP policy."""
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 READ_ONLY_TOOLS = frozenset({
     "get_accounts", "get_portfolio", "get_realized_pnl", "get_pnl_trade_history", "search",
@@ -31,3 +31,17 @@ def validate_authorization_url(url: str) -> str:
     if parsed.scheme != "https" or not official_host or parsed.port not in {None, 443}:
         raise RuntimeError("Robinhood returned an untrusted authorization URL")
     return url
+
+
+def parse_loopback_callback(url: str) -> tuple[str, str]:
+    parsed = urlparse(url)
+    if (parsed.scheme, parsed.hostname, parsed.port, parsed.path) != ("http", "127.0.0.1", 8765, "/callback"):
+        raise ValueError("Invalid callback destination")
+    parameters = parse_qs(parsed.query, keep_blank_values=True)
+    if parameters.get("error"):
+        raise PermissionError("Authorization denied")
+    code = parameters.get("code", [None])[0]
+    state = parameters.get("state", [None])[0]
+    if not code or not state:
+        raise ValueError("Incomplete callback")
+    return code, state
