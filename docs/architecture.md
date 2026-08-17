@@ -7,5 +7,7 @@ The Aegis browser talks only to FastAPI. FastAPI coordinates a narrow broker gat
 
 Phase 1 contains no order endpoint, broker credential, or execution implementation. `RobinhoodBrokerAdapter` is a status-only provider-neutral boundary. The System page can persist non-secret Robinhood connection metadata (display name and the exact official endpoint) but cannot accept credentials, arbitrary endpoints, or invoke MCP tools. `AEGIS_TRADING_ENABLED` must be false; backend startup rejects true.
 
+Phase 2 adds authenticated console projections for portfolio-boundary status, research scenario configuration, operator preferences, and audit history. Scenario persistence is configuration only: it cannot fetch market data, run a backtest, paper trade, authorize risk, invoke the broker gateway, or execute an order. Paper execution belongs to Phase 8 and live authorization to Phases 10–11.
+
 See `data-model.md`, `security-model.md`, and ADRs in `decisions/`.
 

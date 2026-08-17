@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -54,4 +54,26 @@ class BrokerConnectionConfig(Base):
     connection_name: Mapped[str] = mapped_column(String(80))
     endpoint: Mapped[str] = mapped_column(String(255))
     mode: Mapped[str] = mapped_column(String(20), default="READ_ONLY")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class StrategyScenario(Base):
+    __tablename__ = "strategy_scenarios"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    strategy_type: Mapped[str] = mapped_column(String(60))
+    description: Mapped[str] = mapped_column(Text, default="")
+    lifecycle: Mapped[str] = mapped_column(String(20), default="RESEARCH")
+    parameters: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class OperatorPreference(Base):
+    __tablename__ = "operator_preferences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    compact_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    page_size: Mapped[int] = mapped_column(Integer, default=20)
+    confirm_sensitive_actions: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

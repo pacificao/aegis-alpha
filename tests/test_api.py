@@ -1,3 +1,4 @@
+from uuid import uuid4
 from fastapi.testclient import TestClient
 import pytest
 
@@ -110,3 +111,60 @@ def test_robinhood_browser_authorization_and_disconnect_are_csrf_protected(monke
             assert removed.json()["trading"] == "DISABLED"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_phase2_console_boundaries_and_persistence():
+    app.dependency_overrides[current_principal] = lambda: principal
+    app.dependency_overrides[csrf_protected] = lambda: principal
+    try:
+        with TestClient(app) as client:
+            scenario_name = f"Test Research {uuid4().hex[:8]}"
+            portfolio = client.get("/api/portfolio")
+            assert portfolio.status_code == 200
+            assert portfolio.json()["holdings_available"] is False
+            assert portfolio.json()["trading"] == "DISABLED"
+
+            scenarios = client.get("/api/scenarios")
+            assert scenarios.status_code == 200
+            dividend = next(item for item in scenarios.json() if item["name"] == "Dividend Farm")
+            assert dividend["lifecycle"] == "RESEARCH"
+            assert dividend["parameters"]["max_position_pct"] == 1.0
+
+            created = client.post(
+                "/api/scenarios",
+                json={"name": scenario_name, "strategy_type": "CUSTOM_RESEARCH", "description": "test", "lifecycle": "RESEARCH", "parameters": {"threshold": 2.5}},
+                headers={"X-CSRF-Token": "csrf"},
+            )
+            assert created.status_code == 201
+            scenario_id = created.json()["id"]
+            updated = client.patch(
+                f"/api/scenarios/{scenario_id}",
+                json={"name": scenario_name, "strategy_type": "CUSTOM_RESEARCH", "description": "paused", "lifecycle": "PAUSED", "parameters": {"threshold": 3.0}},
+                headers={"X-CSRF-Token": "csrf"},
+            )
+            assert updated.status_code == 200
+            assert updated.json()["parameters"]["threshold"] == 3.0
+
+            live_attempt = client.patch(
+                f"/api/scenarios/{scenario_id}",
+                json={"name": scenario_name, "strategy_type": "CUSTOM_RESEARCH", "description": "unsafe", "lifecycle": "APPROVED_LIVE", "parameters": {}},
+                headers={"X-CSRF-Token": "csrf"},
+            )
+            assert live_attempt.status_code == 422
+
+            settings = client.get("/api/settings")
+            assert settings.status_code == 200
+            unsafe_settings = client.patch(
+                "/api/settings",
+                json={"compact_mode": True, "page_size": 25, "confirm_sensitive_actions": False},
+                headers={"X-CSRF-Token": "csrf"},
+            )
+            assert unsafe_settings.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_phase2_console_routes_reject_unauthenticated_access():
+    with TestClient(app) as client:
+        for route in ("/api/portfolio", "/api/scenarios", "/api/settings", "/api/activity"):
+            assert client.get(route).status_code == 401
