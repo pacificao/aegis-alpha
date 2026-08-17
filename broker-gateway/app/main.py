@@ -2,6 +2,7 @@
 import secrets
 import asyncio
 import os
+from contextlib import suppress
 from datetime import UTC, datetime
 
 import httpx
@@ -159,7 +160,18 @@ async def oauth_callback(code: str | None = Query(default=None), state: str | No
 
 
 @app.post("/internal/disconnect", dependencies=[Depends(internal_auth)])
-def disconnect():
+async def disconnect():
+    global _flow_task, _auth_url, _callback
+    if _flow_task and not _flow_task.done():
+        _flow_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _flow_task
+    for pending in (_auth_url, _callback):
+        if pending and not pending.done():
+            pending.cancel()
+    _flow_task = None
+    _auth_url = None
+    _callback = None
     storage.clear()
     _state.update(status="NOT_CONFIGURED", detail="Authorization removed", last_sync_at=None, allowed_tools=0, blocked_tools=0)
     return public_state()
