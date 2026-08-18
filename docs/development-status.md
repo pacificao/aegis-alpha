@@ -47,4 +47,11 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Backend pytest: 9/9 passed. Frontend build and TypeScript: passed. Vitest: 1/1. ESLint: 0 errors, 1 existing navigation warning. Browser authentication/hydration/assets/console checks: 8/8 passed. All six tested console pages returned 200; four unauthenticated Phase 2 APIs returned 401.
 - Dividend Farm is documented as an empirical hypothesis. Market data, backtesting, real-time paper simulation, deterministic risk, execution, controlled live, and autonomy remain later gated phases.
 
+
+## Post-Phase 2 navigation refinement
+
+- The operator console now uses grouped navigation: Portfolio, Scenarios, Performance, Suggested Adjustments, and System. Administrative pages are contained under System, reducing persistent menu clutter on desktop and mobile.
+- Performance and Suggested Adjustments have dedicated, authentication-protected views. They disclose data readiness and required decision notes without fabricating analytics or recommendations.
+- Suggested adjustments remain reviewable proposals only; they cannot automatically change a scenario or bypass strategy, deterministic risk, or execution controls. Trading remains disabled.
+
 Next: Phase 3 — Aegis Data. Trading remains disabled.
