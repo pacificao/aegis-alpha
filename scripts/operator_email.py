@@ -14,10 +14,12 @@ def health(url):
             return 'HEALTHY' if response.status==200 else f'HTTP {response.status}'
     except Exception:
         return 'UNAVAILABLE'
-def send(kind,cfg,test):
+def send(kind,cfg,test,detail_override=None):
     now=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     system=[('Aegis application',health('https://aegis-alpha.pacificao.com/health')),('Broker gateway',health('https://brokerage.aegis-alpha.pacificao.com/health')),('Trading','DISABLED')]
     content={'premarket':('Pre-market Decision Briefing','Decisions that matter before the market opens.','Market intelligence, economic events, ranked opportunities, portfolio exposure, available capital, and scenario evidence are awaiting validated Phase 3 data.'),'postmarket':('Post-market Highlights','The important outcomes from today.','Daily gains, attribution, dividends, portfolio changes, risk movement, and day/week/month comparisons are awaiting verified portfolio and market data.'),'alert':('Attention Required','Aegis operator-attention alert.','TEST ALERT: delivery and escalation formatting validation only. No production incident or user action is currently asserted.')}
+    if kind=='alert' and detail_override:
+        content['alert']=('Attention Required','Aegis operator-attention alert.',detail_override)
     title,subtitle,detail=content[kind]; prefix='[TEST] ' if test else ''
     msg=EmailMessage(); msg['Subject']=f'{prefix}Aegis Alpha — {title} — {now}'; msg['From']=cfg.get('SMTP_FROM_ADDRESS') or cfg.get('SMTP_FROM') or cfg['SMTP_USERNAME']; msg['To']=cfg.get('OPERATOR_EMAIL') or cfg.get('SMTP_TO')
     lines=[f'{prefix}{title}',subtitle,'',detail,'','System readiness:']+[f'- {key}: {value}' for key,value in system]+['','Notification only. Authenticate in Aegis before taking action.']
@@ -31,10 +33,10 @@ def send(kind,cfg,test):
         raise RuntimeError('SMTP server refused one or more recipients')
     print(f'{kind}: submission accepted')
 def main():
-    parser=argparse.ArgumentParser(); parser.add_argument('kind',choices=('premarket','postmarket','alert')); parser.add_argument('--test',action='store_true'); args=parser.parse_args()
+    parser=argparse.ArgumentParser(); parser.add_argument('kind',choices=('premarket','postmarket','alert')); parser.add_argument('--test',action='store_true'); parser.add_argument('--detail'); args=parser.parse_args()
     cfg=load('.env')
     if not cfg.get('SMTP_PASSWORD') or 'CHANGE_ME' in cfg['SMTP_PASSWORD']:
         cfg=load('/home/nathan/.config/aegis/mail.env')
-    send(args.kind,cfg,args.test)
+    send(args.kind,cfg,args.test,args.detail)
 if __name__=='__main__':
     main()
