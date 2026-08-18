@@ -53,5 +53,7 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - The operator console now uses grouped navigation: Portfolio, Scenarios, Performance, Suggested Adjustments, and System. Administrative pages are contained under System, reducing persistent menu clutter on desktop and mobile.
 - Performance and Suggested Adjustments have dedicated, authentication-protected views. They disclose data readiness and required decision notes without fabricating analytics or recommendations.
 - Suggested adjustments remain reviewable proposals only; they cannot automatically change a scenario or bypass strategy, deterministic risk, or execution controls. Trading remains disabled.
+- Dashboard operational telemetry was moved out of the decision surface and remains available under System. Dashboard is now a visualization-ready decision cockpit for portfolio value, return, available capital, drawdown, performance versus benchmark, risk/exposure, scenario contribution, opportunity intelligence, and an operator decision queue.
+- Time horizon, account, scenario, and benchmark filters are established. Unavailable data-dependent filters are visibly disabled and all metrics use explicit empty states until Phase 3 supplies validated data; nothing is estimated or fabricated.
 
 Next: Phase 3 — Aegis Data. Trading remains disabled.
