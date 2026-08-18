@@ -56,4 +56,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Dashboard operational telemetry was moved out of the decision surface and remains available under System. Dashboard is now a visualization-ready decision cockpit for portfolio value, return, available capital, drawdown, performance versus benchmark, risk/exposure, scenario contribution, opportunity intelligence, and an operator decision queue.
 - Time horizon, account, scenario, and benchmark filters are established. Unavailable data-dependent filters are visibly disabled and all metrics use explicit empty states until Phase 3 supplies validated data; nothing is estimated or fabricated.
 
+
+## Startup continuity and operator communications
+
+- Docker and the PAM authentication bridge are enabled and active at boot. Every Aegis Compose service has `restart: unless-stopped`; the isolated broker bootstrap enables Docker, Nginx, and certificate renewal and gives its gateway the same restart policy. Both public HTTPS health checks passed with trading disabled. A destructive reboot was not required to verify the configuration.
+- Canonical roadmap tasks and `docs/operator-briefings.md` now preserve pre-market decision briefings, post-market highlights, attention alerts, public-source/citation rules, portfolio inputs, exchange-calendar scheduling, durable delivery, redaction, deduplication, retry, audit, and notification preferences. Delivery is WAITING FOR CREDENTIALS: an authorized transactional mail provider, verified sender identity/domain, and runtime secret are not configured, so no email was sent.
 Next: Phase 3 — Aegis Data. Trading remains disabled.
