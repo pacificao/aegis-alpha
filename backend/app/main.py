@@ -26,8 +26,8 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
-from .schemas import DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
@@ -37,6 +37,7 @@ from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
 from .intelligence import validate_artifact, consensus
+from .paper.service import execute as execute_paper, snapshot as paper_snapshot
 
 configure_logging()
 log = structlog.get_logger()
@@ -128,7 +129,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 7, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 8, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -479,3 +480,21 @@ def create_intelligence_review(artifact_id:int,payload:IntelligenceReviewCreate,
     row=IntelligenceReview(artifact_id=artifact_id,**payload.model_dump(),independent=True,created_by=principal.username);db.add(row);db.flush();reviews=db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id)).all();governance,reason=consensus(artifact,reviews);artifact.status=governance;artifact.human_review_required=governance!="ELIGIBLE_FOR_RISK_REVIEW"
     db.add(DevelopmentActivity(actor=principal.username,action="intelligence_review_recorded",entity_type="intelligence_artifact",entity_id=artifact.id,detail=f"reviewer={row.reviewer}; verdict={row.verdict}; governance={governance}; reason={reason}; risk_authorized=false; trading=DISABLED"));db.commit();db.refresh(artifact)
     return serialize_intelligence(artifact,db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id).order_by(IntelligenceReview.created_at)).all())
+
+@app.get("/api/simulator/status")
+def simulator_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    value=paper_snapshot(db);value["order_count"]=db.scalar(select(func.count()).select_from(PaperOrder)) or 0;return value
+
+@app.post("/api/simulator/orders",status_code=201)
+def create_paper_order(payload:PaperOrderCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    try:order=execute_paper(db,payload.risk_assessment_id,payload.quote_record_id,principal.username)
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
+    fill=db.scalar(select(PaperFill).where(PaperFill.order_id==order.id))
+    return {"id":order.id,"risk_assessment_id":order.risk_assessment_id,"quote_record_id":order.quote_record_id,"symbol":order.symbol,"side":order.side,"quantity":order.quantity,"status":order.status,"reason":order.reason,"fill":{"id":fill.id,"price":fill.price,"quantity":fill.quantity,"commission":fill.commission,"slippage_bps":fill.slippage_bps,"filled_at":fill.filled_at},"environment":"PAPER","broker_called":False,"executable_live":False,"trading":"DISABLED","created_at":order.created_at}
+
+@app.get("/api/simulator/orders")
+def paper_orders(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    rows=db.scalars(select(PaperOrder).order_by(PaperOrder.created_at.desc()).limit(limit)).all();result=[]
+    for order in rows:
+        fill=db.scalar(select(PaperFill).where(PaperFill.order_id==order.id));result.append({"id":order.id,"risk_assessment_id":order.risk_assessment_id,"quote_record_id":order.quote_record_id,"symbol":order.symbol,"side":order.side,"quantity":order.quantity,"status":order.status,"reason":order.reason,"fill":{"price":fill.price,"quantity":fill.quantity,"commission":fill.commission,"slippage_bps":fill.slippage_bps,"filled_at":fill.filled_at} if fill else None,"environment":"PAPER","broker_called":False,"executable_live":False,"trading":"DISABLED","created_at":order.created_at})
+    return result

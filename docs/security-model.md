@@ -23,3 +23,7 @@ External content is untrusted research input. It is normalized and quality-check
 ## Intelligence isolation
 
 Intelligence inputs are untrusted proposals. Strict schemas reject extra fields, evidence requires HTTPS citations and timezone-aware freshness, and reviews bind to the immutable artifact checksum. Model credentials are not accepted by the API or UI. Prompt/model output cannot mutate strategies, controls, broker state, or execution. High-impact output always requires human review; trading remains disabled.
+
+## Paper-domain isolation
+
+Paper fills require authentication, CSRF, a single-use authorized RiskAssessment, matching fresh quote provenance, and bounded price movement. The service has no broker/gateway import. Paper responses and audit records permanently identify simulation and trading disabled.
