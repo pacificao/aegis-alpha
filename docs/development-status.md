@@ -91,3 +91,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Backend pytest: 19/19 passed. Frontend ESLint: 0 errors, 1 existing navigation warning. Vitest: 1/1 passed. Production build and TypeScript passed.
 - Production acceptance: Alembic `0007_phase4_strategy_engine (head)`; all six Compose services healthy; HTTPS `/health` returned version `0.3.0-strategy` with trading disabled; `/strategies` returned 200 with security headers. A persisted Dividend Farm v1 evaluation returned ENTRY at the 1% strategy proposal bound while `risk_authorized=false`, `executable=false`, and `trading=DISABLED`.
 - PostgreSQL roadmap state was updated only after acceptance: Phase 4 is 10/10 COMPLETE with verified notes and a development activity record.
+
+## Post-Phase 4 UI truth audit
+
+- Removed stale Phase 1–3 placeholders across the global shell, Dashboard, Performance, Roadmap, Portfolio, and Security views.
+- Dashboard and Performance now read live Phase 3 readiness counts while clearly reserving backtest metrics for Phase 5, paper results for Phase 8, and verified broker portfolio metrics for Phase 9.
+- Roadmap delivery/next-phase summaries derive from PostgreSQL state instead of hard-coded phase numbers. The UI shows Phase 4 complete, Phase 5 next, and trading disabled without fabricating performance.
+- Frontend ESLint passed with 0 errors and one existing navigation warning; Vitest 1/1 and the production build/TypeScript passed.
