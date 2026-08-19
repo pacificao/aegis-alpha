@@ -26,6 +26,10 @@ class BrokerGatewayClient:
     def market_data(self, tool: str, arguments: dict) -> dict:
         return self._request("POST", "/internal/market-data", json={"tool": tool, "arguments": arguments})
 
+    def account_snapshot(self) -> dict:
+        """Fetch the gateway read-only brokerage snapshot."""
+        return self._request("POST", "/internal/account-snapshot")
+
     def start_authorization(self) -> dict:
         return self._request("POST", "/internal/connect/start")
 

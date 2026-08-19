@@ -1,0 +1,43 @@
+from datetime import UTC,datetime
+from pathlib import Path
+from fastapi.testclient import TestClient
+from app.auth import Principal,csrf_protected,current_principal
+from app.database import SessionLocal
+from app.gateway import BrokerGatewayClient
+from app.main import app
+from app.broker_sync.service import normalize,synchronize
+from app.models import BrokerSnapshot,DevelopmentActivity
+P=Principal(username="test-operator",session_id="test",csrf_token="csrf")
+def payload():
+ return {"status":"COMPLETE","provider":"robinhood","observed_at":datetime.now(UTC).isoformat(),"accounts":[{"account_ref":"ref_0123456789abcdef","datasets":{"get_portfolio":{"equity":"1000.00","buying_power":"250.00"},"get_equity_positions":[{"symbol":"SPY","quantity":"1","equity":"500"}],"get_equity_orders":[{"id":"ref_order","state":"filled","executions":[{"quantity":"1","price":"500"}]}]},"failures":[]}],"trading":"DISABLED","mode":"READ_ONLY"}
+def test_normalizes_balances_holdings_orders_fills_and_reconciles():
+ n=normalize(payload());assert n["status"]=="VERIFIED";assert len(n["balances"])==1;assert len(n["holdings"])==1;assert len(n["orders"])==1;assert len(n["fills"])==1;assert n["reconciliation"]["status"]=="MATCHED";assert len(n["checksum"])==64
+def test_unsafe_gateway_response_fails_closed():
+ p=payload();p["trading"]="ENABLED"
+ try:normalize(p);assert False
+ except ValueError:pass
+ p=payload();p["accounts"][0]["datasets"]["place_equity_order"]={}
+ try:normalize(p);assert False
+ except ValueError:pass
+def test_retry_persistence_audit_and_no_secret(monkeypatch):
+ calls={"n":0}
+ def snap(self):calls["n"]+=1;return {"status":"ERROR"} if calls["n"]<3 else payload()
+ monkeypatch.setattr(BrokerGatewayClient,"account_snapshot",snap);db=SessionLocal();run=synchronize(db,BrokerGatewayClient(__import__("app.config",fromlist=["get_settings"]).get_settings()),"test")
+ assert run.status=="COMPLETE" and run.attempts==3
+ row=db.get(BrokerSnapshot,run.snapshot_id);assert row.reconciliation["status"]=="MATCHED";assert "account_number" not in str(row.balances)
+ audit=db.query(DevelopmentActivity).filter_by(entity_type="broker_sync_run",entity_id=run.id).one();assert "trading=DISABLED" in audit.detail;db.close()
+def test_authenticated_sync_and_portfolio_projection(monkeypatch):
+ monkeypatch.setattr(BrokerGatewayClient,"status",lambda self:{"status":"CONNECTED","trading":"DISABLED","mode":"READ_ONLY"});monkeypatch.setattr(BrokerGatewayClient,"account_snapshot",lambda self:payload())
+ app.dependency_overrides[current_principal]=lambda:P;app.dependency_overrides[csrf_protected]=lambda:P
+ try:
+  with TestClient(app) as client:
+   sync=client.post("/api/broker/robinhood/sync",headers={"X-CSRF-Token":"csrf"});assert sync.status_code==200;assert sync.json()["executable"] is False;assert sync.json()["trading"]=="DISABLED"
+   view=client.get("/api/portfolio");assert view.status_code==200;body=view.json();assert body["holdings_available"] is True;assert body["snapshot"]["reconciliation"]["status"]=="MATCHED"
+ finally:app.dependency_overrides.clear()
+def test_no_execution_surface_exists():
+ root=Path(__file__).parents[1];sources=((root/"backend/app/broker.py").read_text()+(root/"backend/app/gateway.py").read_text())
+ assert "place_order" not in sources and "cancel_order" not in sources and "execute_order" not in sources
+ with TestClient(app) as client:assert client.post("/api/broker/orders",json={}).status_code in {401,404,405}
+def test_reconciliation_detects_duplicates_and_overfills():
+ p=payload();order=p["accounts"][0]["datasets"]["get_equity_orders"][0];order["quantity"]="0.5";p["accounts"][0]["datasets"]["get_equity_orders"].append(dict(order))
+ n=normalize(p);r=n["reconciliation"];assert r["status"]=="ATTENTION";assert r["order_refs_unique"] is False;assert r["fill_quantities_valid"] is False

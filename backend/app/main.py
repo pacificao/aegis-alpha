@@ -26,7 +26,7 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .models import BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
 from .schemas import DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
@@ -38,6 +38,7 @@ from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
 from .intelligence import validate_artifact, consensus
 from .paper.service import execute as execute_paper, snapshot as paper_snapshot
+from .broker_sync.service import synchronize as synchronize_broker, serialize_snapshot
 
 configure_logging()
 log = structlog.get_logger()
@@ -129,7 +130,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 8, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 9, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -227,9 +228,21 @@ def system(_: Principal = Depends(current_principal), db: Session = Depends(get_
 
 
 @app.get("/api/portfolio")
-def portfolio(_: Principal = Depends(current_principal)):
+def portfolio(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     broker = BrokerGatewayClient(settings).status()
-    return {"broker": "Robinhood", "connection": broker["status"], "mode": "READ_ONLY", "holdings_available": False, "positions": [], "detail": "Portfolio holdings synchronization belongs to Phase 9; Phase 2 exposes connection state only.", "trading": "DISABLED"}
+    snapshot = db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()))
+    result = serialize_snapshot(snapshot, broker.get("status", "ERROR"))
+    run = db.scalar(select(BrokerSyncRun).order_by(BrokerSyncRun.started_at.desc()))
+    result["latest_sync"] = {"id":run.id,"status":run.status,"attempts":run.attempts,"error_code":run.error_code,"completed_at":run.completed_at} if run else None
+    return result
+
+@app.post("/api/broker/robinhood/sync")
+def broker_sync(principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    if BrokerGatewayClient(settings).status().get("status") != "CONNECTED":
+        raise HTTPException(status_code=409, detail="Robinhood read-only connection is not available")
+    run=synchronize_broker(db,BrokerGatewayClient(settings),principal.username)
+    if run.status == "FAILED":raise HTTPException(status_code=502,detail="Read-only broker synchronization failed safely")
+    return {"id":run.id,"status":run.status,"attempts":run.attempts,"snapshot_id":run.snapshot_id,"trading":"DISABLED","executable":False}
 
 
 @app.get("/api/scenarios", response_model=list[ScenarioOut])

@@ -240,3 +240,33 @@ class PaperPosition(Base):
     __tablename__="paper_positions"
     __table_args__=(UniqueConstraint("account_id","symbol",name="uq_paper_position_account_symbol"),)
     id:Mapped[int]=mapped_column(Integer,primary_key=True);account_id:Mapped[int]=mapped_column(ForeignKey("paper_accounts.id",ondelete="CASCADE"),index=True);symbol:Mapped[str]=mapped_column(String(32),index=True);quantity:Mapped[float]=mapped_column(Float);average_cost:Mapped[float]=mapped_column(Float);updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
+
+class BrokerSnapshot(Base):
+    """Immutable normalized read-only broker state; never an execution object."""
+    __tablename__="broker_snapshots"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    provider:Mapped[str]=mapped_column(String(40),index=True)
+    status:Mapped[str]=mapped_column(String(20),index=True)
+    account_count:Mapped[int]=mapped_column(Integer,default=0)
+    account_refs:Mapped[list]=mapped_column(JSON,default=list)
+    balances:Mapped[list]=mapped_column(JSON,default=list)
+    holdings:Mapped[list]=mapped_column(JSON,default=list)
+    orders:Mapped[list]=mapped_column(JSON,default=list)
+    fills:Mapped[list]=mapped_column(JSON,default=list)
+    reconciliation:Mapped[dict]=mapped_column(JSON,default=dict)
+    checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True)
+    source_observed_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),index=True)
+    created_by:Mapped[str]=mapped_column(String(64))
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+
+class BrokerSyncRun(Base):
+    __tablename__="broker_sync_runs"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    provider:Mapped[str]=mapped_column(String(40),index=True)
+    status:Mapped[str]=mapped_column(String(20),index=True)
+    attempts:Mapped[int]=mapped_column(Integer,default=0)
+    snapshot_id:Mapped[int|None]=mapped_column(ForeignKey("broker_snapshots.id",ondelete="RESTRICT"),nullable=True,index=True)
+    error_code:Mapped[str]=mapped_column(String(60),default="")
+    detail:Mapped[str]=mapped_column(Text,default="")
+    started_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+    completed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
