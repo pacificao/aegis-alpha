@@ -30,3 +30,7 @@ Strategy proposals enter a pure deterministic RiskEngine with an immutable polic
 ## Aegis Intelligence (Phase 7)
 
 Provider/model clients submit bounded cited artifacts to the authenticated Intelligence API. PostgreSQL stores immutable evidence/checksum artifacts and independent reviews. The Strategy Council deterministically derives `HUMAN_REVIEW`, `REJECTED`, or `ELIGIBLE_FOR_RISK_REVIEW`; it never authorizes risk. The existing deterministic RiskEngine remains the sole authorization boundary and execution remains absent.
+
+## Aegis Simulator (Phase 8)
+
+The paper domain consumes only persisted RiskEngine authorizations and normalized quotes. It owns separate paper account/order/fill/position tables and has no broker dependency. Paper state never mutates research, risk policy, broker state, or live portfolios.

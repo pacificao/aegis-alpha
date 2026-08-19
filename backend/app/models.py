@@ -226,3 +226,17 @@ class IntelligenceReview(Base):
     id:Mapped[int]=mapped_column(Integer,primary_key=True);artifact_id:Mapped[int]=mapped_column(ForeignKey("intelligence_artifacts.id",ondelete="CASCADE"),index=True)
     reviewer:Mapped[str]=mapped_column(String(80));verdict:Mapped[str]=mapped_column(String(20),index=True);confidence:Mapped[float]=mapped_column(Float);rationale:Mapped[str]=mapped_column(Text)
     evidence_checksum:Mapped[str]=mapped_column(String(64));independent:Mapped[bool]=mapped_column(Boolean,default=True);created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+
+class PaperAccount(Base):
+    __tablename__="paper_accounts"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True);name:Mapped[str]=mapped_column(String(80),unique=True);initial_cash:Mapped[float]=mapped_column(Float);cash:Mapped[float]=mapped_column(Float);realized_pnl:Mapped[float]=mapped_column(Float,default=0);created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now())
+class PaperOrder(Base):
+    __tablename__="paper_orders"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True);account_id:Mapped[int]=mapped_column(ForeignKey("paper_accounts.id",ondelete="RESTRICT"),index=True);risk_assessment_id:Mapped[int]=mapped_column(ForeignKey("risk_assessments.id",ondelete="RESTRICT"),unique=True,index=True);quote_record_id:Mapped[int]=mapped_column(ForeignKey("data_records.id",ondelete="RESTRICT"),index=True);symbol:Mapped[str]=mapped_column(String(32),index=True);side:Mapped[str]=mapped_column(String(4));quantity:Mapped[float]=mapped_column(Float);status:Mapped[str]=mapped_column(String(20),index=True);reason:Mapped[str]=mapped_column(Text,default="");created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+class PaperFill(Base):
+    __tablename__="paper_fills"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True);order_id:Mapped[int]=mapped_column(ForeignKey("paper_orders.id",ondelete="RESTRICT"),unique=True,index=True);price:Mapped[float]=mapped_column(Float);quantity:Mapped[float]=mapped_column(Float);commission:Mapped[float]=mapped_column(Float);slippage_bps:Mapped[float]=mapped_column(Float);filled_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+class PaperPosition(Base):
+    __tablename__="paper_positions"
+    __table_args__=(UniqueConstraint("account_id","symbol",name="uq_paper_position_account_symbol"),)
+    id:Mapped[int]=mapped_column(Integer,primary_key=True);account_id:Mapped[int]=mapped_column(ForeignKey("paper_accounts.id",ondelete="CASCADE"),index=True);symbol:Mapped[str]=mapped_column(String(32),index=True);quantity:Mapped[float]=mapped_column(Float);average_cost:Mapped[float]=mapped_column(Float);updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())

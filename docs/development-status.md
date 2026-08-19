@@ -1,7 +1,7 @@
 # Development Status
 
-- Current phase: Phase 7 — Aegis Intelligence
-- Current version: `0.6.0-intelligence`
+- Current phase: Phase 8 — Aegis Simulator
+- Current version: `0.7.0-simulator`
 - Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE; Phase 7 14/14 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
@@ -128,3 +128,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Protected-main CI passed all backend, frontend, gateway, Compose, and secret checks. Production migration `0010_phase7_intelligence` applied with all six containers healthy.
 - Live acceptance verified cited artifact persistence, two-reviewer low-impact consensus, stale-evidence failure, high-impact human escalation, HTTPS UI 200, unauthenticated API 401, no order/execution routes, and `risk_authorized=false`, `executable=false`, `trading=DISABLED`.
 - PostgreSQL records all 14 Phase 7 tasks COMPLETE. Phase 8 is next.
+
+## Phase 8 implementation — awaiting production acceptance
+
+- Independent paper accounts, single-use risk-authorized orders, fresh normalized quote validation, deterministic fills, positions, realized/unrealized P&L, equity, return, audit history, authenticated APIs, and Simulator UI are implemented.
+- Five-basis-point adverse slippage and $1 commission make friction explicit. Stale data, price deviation, insufficient cash/positions, duplicate authorization use, and missing RiskEngine authorization fail closed.
+- The paper module has no broker/gateway/Robinhood dependency. All outputs identify PAPER, broker-called false, live execution unavailable, and trading disabled.
