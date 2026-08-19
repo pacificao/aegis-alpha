@@ -1,7 +1,7 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Float, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Float, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -210,3 +210,19 @@ class RiskAssessment(Base):
     request_checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True);request_snapshot:Mapped[dict]=mapped_column(JSON)
     outcome:Mapped[str]=mapped_column(String(20),index=True);reason_codes:Mapped[list]=mapped_column(JSON);checks:Mapped[list]=mapped_column(JSON);notional:Mapped[float]=mapped_column(Float);risk_authorized:Mapped[bool]=mapped_column(Boolean,index=True)
     created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+
+class IntelligenceArtifact(Base):
+    __tablename__="intelligence_artifacts"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    artifact_type:Mapped[str]=mapped_column(String(40),index=True);subject:Mapped[str]=mapped_column(String(160),index=True)
+    thesis:Mapped[str]=mapped_column(Text);recommendation:Mapped[str]=mapped_column(String(20),index=True);confidence:Mapped[float]=mapped_column(Float)
+    evidence:Mapped[list]=mapped_column(JSON);analysis:Mapped[dict]=mapped_column(JSON);checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True)
+    status:Mapped[str]=mapped_column(String(24),index=True);human_review_required:Mapped[bool]=mapped_column(Boolean,default=True);risk_authorized:Mapped[bool]=mapped_column(Boolean,default=False)
+    created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+
+class IntelligenceReview(Base):
+    __tablename__="intelligence_reviews"
+    __table_args__=(UniqueConstraint("artifact_id","reviewer",name="uq_intelligence_review_artifact_reviewer"),)
+    id:Mapped[int]=mapped_column(Integer,primary_key=True);artifact_id:Mapped[int]=mapped_column(ForeignKey("intelligence_artifacts.id",ondelete="CASCADE"),index=True)
+    reviewer:Mapped[str]=mapped_column(String(80));verdict:Mapped[str]=mapped_column(String(20),index=True);confidence:Mapped[float]=mapped_column(Float);rationale:Mapped[str]=mapped_column(Text)
+    evidence_checksum:Mapped[str]=mapped_column(String(64));independent:Mapped[bool]=mapped_column(Boolean,default=True);created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)

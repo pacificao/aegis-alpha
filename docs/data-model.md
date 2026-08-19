@@ -30,3 +30,8 @@ Uniqueness on provider, data type, and canonical checksum makes retries idempote
 - `risk_policies`: immutable version, configuration, checksum and active marker.
 - `risk_control_state`: singleton global kill-switch/circuit-breaker state with operator reason.
 - `risk_assessments`: proposal snapshot, deterministic checks, reason codes, outcome, notional and authorization flag. Records are non-executable.
+
+## Phase 7 intelligence
+
+- `intelligence_artifacts`: typed thesis, recommendation, confidence, cited evidence snapshot, structured counter-analysis, checksum, governance state, and permanent false risk-authorization flag.
+- `intelligence_reviews`: checksum-bound independent reviewer verdict, confidence, rationale, identity, and timestamp.

@@ -1,7 +1,7 @@
 # Development Status
 
-- Current phase: Phase 6 — Aegis Risk
-- Current version: `0.5.0-risk`
+- Current phase: Phase 7 — Aegis Intelligence
+- Current version: `0.6.0-intelligence`
 - Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
@@ -119,3 +119,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Protected-main CI passed backend, frontend, gateway, Compose, and secret checks. Production migration `0009_phase6_aegis_risk` applied and all six containers reported healthy.
 - Live acceptance verified an authorized-but-non-executable proposal, checksum idempotency, changed-content duplicate rejection, stale-data rejection, kill-switch rejection and safe reset, HTTPS `/risk` 200, unauthenticated API 401, and the absence of order/execution routes. Trading remained `DISABLED`.
 - PostgreSQL roadmap state records all 14 Phase 6 tasks COMPLETE with a development activity audit entry. Phase 7 is next.
+
+## Phase 7 implementation — awaiting production acceptance
+
+- Provider-neutral, strictly schema-bound intelligence artifacts cover strategy creation/critique, market regime, news, fundamentals, parameter research, post-trade review, anomaly detection, pre-market briefings, post-market digests, and attention alerts.
+- Citations, timestamps, freshness, confidence, countercases, immutable checksums, independent reviews, and deterministic consensus are persisted and audited.
+- Only unanimous independent agreement can make low-impact research/hold/adjust artifacts eligible for separate RiskEngine review. High-impact recommendations and disagreement require a human. Intelligence never authorizes risk or executes; trading remains disabled.
