@@ -1,8 +1,8 @@
 # Development Status
 
-- Current phase: Phase 3 — Aegis Data
+- Current phase: Phase 4 — Aegis Strategy Engine
 - Current version: `0.2.0-console`
-- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE
+- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -89,3 +89,5 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Strategy Engine UI supports adjustable scenario parameters, universe configuration, immutable version creation, and operator-supplied decision previews. It explicitly does not backtest, simulate, authorize risk, or execute.
 - Migration `0007_phase4_strategy_engine` adds strategy versions and decision history. ADR 0005 records the immutable boundary.
 - Backend pytest: 19/19 passed. Frontend ESLint: 0 errors, 1 existing navigation warning. Vitest: 1/1 passed. Production build and TypeScript passed.
+- Production acceptance: Alembic `0007_phase4_strategy_engine (head)`; all six Compose services healthy; HTTPS `/health` returned version `0.3.0-strategy` with trading disabled; `/strategies` returned 200 with security headers. A persisted Dividend Farm v1 evaluation returned ENTRY at the 1% strategy proposal bound while `risk_authorized=false`, `executable=false`, and `trading=DISABLED`.
+- PostgreSQL roadmap state was updated only after acceptance: Phase 4 is 10/10 COMPLETE with verified notes and a development activity record.
