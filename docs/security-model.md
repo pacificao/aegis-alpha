@@ -27,3 +27,7 @@ Intelligence inputs are untrusted proposals. Strict schemas reject extra fields,
 ## Paper-domain isolation
 
 Paper fills require authentication, CSRF, a single-use authorized RiskAssessment, matching fresh quote provenance, and bounded price movement. The service has no broker/gateway import. Paper responses and audit records permanently identify simulation and trading disabled.
+
+## Phase 9 private portfolio reads
+
+Account synchronization requires authenticated Aegis access and CSRF for initiation. The backend-to-gateway request uses TLS plus a protected shared secret and originates over the VPC. The gateway keyed-HMAC pseudonymizes account/order/position identifiers and recursively removes credential-like fields before data crosses domains. Aegis accepts only an exact dataset set with `READ_ONLY` and `trading=DISABLED` invariants, retries only reads, and fails closed without persisting unsafe responses. Logs and audit events contain status/counts, never raw payloads, tokens, full account numbers, or holdings.

@@ -1,8 +1,8 @@
 # Development Status
 
-- Current phase: Phase 8 — Aegis Simulator
-- Current version: `0.7.0-simulator`
-- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE; Phase 7 14/14 COMPLETE; Phase 8 6/6 COMPLETE
+- Current phase: Phase 9 — Aegis Gateway (implementation and isolated deployment acceptance in progress)
+- Current version: `0.8.0-gateway`
+- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE; Phase 7 14/14 COMPLETE; Phase 8 6/6 COMPLETE; Phase 9 acceptance pending
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -137,3 +137,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Protected-main CI passed backend, frontend, gateway, Compose, and secret checks. Production migration `0011_phase8_simulator` applied with all six containers healthy.
 - Live acceptance ingested a fresh official Alpha Vantage SPY quote, obtained deterministic RiskEngine authorization, persisted a paper fill and marked position with explicit friction, rejected duplicate use, confirmed no broker call or non-paper order route, and kept trading disabled.
 - PostgreSQL records all 6 Phase 8 tasks COMPLETE. Phase 9 is next.
+
+## Phase 9 — IN PROGRESS (2026-08-19)
+
+- Implemented a provider-neutral read-only snapshot adapter and a single bounded isolated-gateway account snapshot route. Exact Robinhood account, portfolio, P&L, position, tax-lot, and historical order reads are allowed; all mutation/unknown tools remain fail-closed.
+- Private identifiers are one-way hashed before leaving the gateway. Aegis strictly validates read-only/trading-disabled invariants, normalizes balances/holdings/orders/fills, detects duplicate references and invalid fill quantities, retries only idempotent reads, persists immutable checksummed snapshots/runs, and writes sanitized audit activity.
+- Portfolio, Dashboard, and Performance now project verified snapshot evidence and freshness without fabricating return, drawdown, exposure, or attribution. Synchronization requires authentication and CSRF; no order/review/cancel route or adapter method exists.
+- Migration `0012_phase9_gateway`, backend/gateway tests, full frontend production build, isolated gateway deployment, live redacted synchronization, CI, and roadmap closure are required before COMPLETE is recorded. Trading remains disabled.
