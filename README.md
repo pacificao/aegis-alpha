@@ -78,3 +78,5 @@ Architecture, roadmap, security boundaries, deployment planning, and current ver
 
 The canonical endpoint is `https://aegis-alpha.pacificao.com`. HTTP and direct-IP UI requests redirect there; direct-IP `/health` remains available for diagnostics. TLS is renewed automatically with Certbot. Never submit the Linux password through a plaintext HTTP URL.
 The authenticated System page saves non-secret MCP metadata and initiates Robinhood’s official browser/OAuth flow through the isolated Aegis broker gateway. Never enter a Robinhood password or token into Aegis, and never authorize brokerage access on the AI-administered development host.
+
+Phase 5 adds **Aegis Lab** under Performance: authenticated, checksummed, research-only portfolio backtesting with explicit frictions, corporate actions, benchmarks, robustness analysis, and inspectable trades. Lab results are not portfolio results and cannot trade.
