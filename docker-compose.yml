@@ -68,6 +68,11 @@ services:
       ROBINHOOD_CONNECTION_CONFIGURED: ${ROBINHOOD_CONNECTION_CONFIGURED:-false}
       BROKER_GATEWAY_URL: ${BROKER_GATEWAY_URL:-https://brokerage.aegis-alpha.pacificao.com}
       BROKER_GATEWAY_SHARED_SECRET: ${BROKER_GATEWAY_SHARED_SECRET}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      FRED_API_KEY: ${FRED_API_KEY:-}
+      SEC_USER_AGENT: ${SEC_USER_AGENT:-Aegis Alpha admin@pacificao.com}
+      DATA_CACHE_TTL_SECONDS: ${DATA_CACHE_TTL_SECONDS:-300}
+      DEFAULT_MARKET_SYMBOLS: ${DEFAULT_MARKET_SYMBOLS:-SPY,QQQ,AAPL}
     volumes:
       - /run/aegis-auth:/run/aegis-auth
       - ./tests:/app/tests:ro

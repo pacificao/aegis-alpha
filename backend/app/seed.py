@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import BrokerConnectionConfig, Phase, StrategyScenario, Task, TaskStatus
+from .models import BrokerConnectionConfig, DataProvider, Instrument, Phase, StrategyScenario, Task, TaskStatus
 from .roadmap_data import PHASES
 
 PHASE1_COMPLETE = {
@@ -11,6 +11,8 @@ PHASE1_COMPLETE = {
     66, 67, 68, 69,
 }
 PHASE1_BLOCKED = {4, 37, 38, 43, 47}
+PHASE3_COMPLETE = {1, 4, 6, 8, 9, 10, 11, 12}
+PHASE3_WAITING = {2, 3, 5, 7}
 
 
 def seed_roadmap(db: Session) -> None:
@@ -20,6 +22,14 @@ def seed_roadmap(db: Session) -> None:
     dividend_farm = db.scalar(select(StrategyScenario).where(StrategyScenario.name == "Dividend Farm"))
     if dividend_farm is None:
         db.add(StrategyScenario(name="Dividend Farm", strategy_type="DIVIDEND_FARM", description="Research whether dividend capture plus capital recycling produces attractive risk-adjusted returns.", lifecycle="RESEARCH", parameters={"max_position_pct": 1.0, "max_allocation_pct": 25.0, "min_annual_yield_pct": 1.0, "max_annual_yield_pct": 12.0, "min_dividend_event_pct": 0.15, "payment_frequencies": ["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"], "min_dividend_history_years": 5, "min_historical_events": 12, "max_median_recovery_days": 30, "max_p90_recovery_days": 90, "min_recovery_probability_pct": 80.0, "max_historical_drawdown_pct": 15.0, "max_holding_days": 90, "min_market_cap_millions": 1000, "min_average_daily_volume": 500000, "max_sector_exposure_pct": 20.0, "earnings_exclusion_days": 5, "include_reits": False, "include_etfs": False, "include_special_dividends": False, "entry_days_before_ex_date": 1, "exit_method": "PURCHASE_PRICE", "profit_target_pct": 0.0, "reinvest_dividends": True}))
+    providers=(("alpha_vantage","MARKET","https://www.alphavantage.co/query","WAITING_FOR_CREDENTIALS"),("fred","ECONOMIC","https://fred.stlouisfed.org/graph/fredgraph.csv","NOT_REQUIRED"),("sec_edgar","FUNDAMENTAL","https://data.sec.gov","NOT_REQUIRED"),("aegis_calendar","CALENDAR","https://www.nyse.com/markets/hours-calendars","NOT_REQUIRED"))
+    for provider_name,provider_type,base_url,credential_status in providers:
+        if db.scalar(select(DataProvider).where(DataProvider.name==provider_name)) is None:
+            db.add(DataProvider(name=provider_name,provider_type=provider_type,base_url=base_url,credential_status=credential_status,enabled=provider_name in {"fred","sec_edgar","aegis_calendar"}))
+    for symbol,name,cik in (("SPY","SPDR S&P 500 ETF Trust",None),("QQQ","Invesco QQQ Trust",None),("AAPL","Apple Inc.","0000320193")):
+        if db.scalar(select(Instrument).where(Instrument.symbol==symbol)) is None:
+            db.add(Instrument(symbol=symbol,name=name,cik=cik,metadata_json={}))
+    db.flush()
     for number, name, description, tasks in PHASES:
         phase = db.scalar(select(Phase).where(Phase.number == number))
         if phase is None:
@@ -38,5 +48,11 @@ def seed_roadmap(db: Session) -> None:
                     notes = "Host prerequisite or privileged verification required; see development status."
                 elif number == 1:
                     initial_status = TaskStatus.IN_PROGRESS
+                elif number == 3 and ordinal in PHASE3_COMPLETE:
+                    initial_status = TaskStatus.COMPLETE
+                    notes = "Implemented and verified in Phase 3 acceptance."
+                elif number == 3 and ordinal in PHASE3_WAITING:
+                    initial_status = TaskStatus.WAITING_FOR_CREDENTIALS
+                    notes = "Official Alpha Vantage adapter is implemented and fixture-tested; production API key and live ingestion validation are required."
                 db.add(Task(phase_id=phase.id, ordinal=ordinal, title=title, status=initial_status, notes=notes))
     db.commit()

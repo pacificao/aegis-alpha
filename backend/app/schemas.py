@@ -3,7 +3,7 @@ from datetime import datetime
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .models import TaskStatus
 
@@ -95,3 +95,28 @@ class OperatorPreferenceOut(OperatorPreferenceUpdate):
     model_config = ConfigDict(from_attributes=True)
     username: str
     updated_at: datetime
+
+class DataIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: Literal["alpha_vantage", "fred", "sec_edgar"]
+    dataset: Literal["historical", "quote", "fundamentals", "dividends", "news", "economic", "companyfacts"]
+    symbol: str | None = Field(default=None, min_length=1, max_length=16, pattern=r"^[A-Za-z0-9.-]+$")
+    series_id: str | None = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9._-]+$")
+    cik: str | None = Field(default=None, min_length=1, max_length=10, pattern=r"^[0-9]+$")
+
+    @model_validator(mode="after")
+    def required_identifiers(self):
+        symbol_sets={"historical", "quote", "fundamentals", "dividends"}
+        if self.dataset in symbol_sets and not self.symbol:
+            raise ValueError("symbol is required for this dataset")
+        if self.dataset == "economic" and not self.series_id:
+            raise ValueError("series_id is required for economic data")
+        if self.dataset == "companyfacts" and not self.cik:
+            raise ValueError("cik is required for SEC company facts")
+        return self
+
+class DataRecordOut(BaseModel):
+    id: int
+    symbol: str | None
+    data_type: str
+    event_time: datetime

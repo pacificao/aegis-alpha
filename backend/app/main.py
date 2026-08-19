@@ -1,6 +1,6 @@
 import time
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import redis
 import structlog
@@ -26,8 +26,12 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DevelopmentActivity, OperatorPreference, Phase, StrategyScenario, Task, TaskStatus
-from .schemas import OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, ScenarioUpdate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, OperatorPreference, Phase, StrategyScenario, Task, TaskStatus
+from .schemas import DataIngestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, ScenarioUpdate, TaskOut, TaskUpdate
+from .data.cache import DataCache
+from .data.calendar import sessions
+from .data.providers import ProviderError
+from .data.service import ingest as ingest_data, status as data_service_status
 from .seed import seed_roadmap
 
 configure_logging()
@@ -120,7 +124,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 2, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 3, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -281,6 +285,42 @@ def update_preferences(payload: OperatorPreferenceUpdate, principal: Principal =
     preference.compact_mode = payload.compact_mode
     preference.page_size = payload.page_size
     preference.confirm_sensitive_actions = True
+
+@app.get("/api/data/status")
+def data_status(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    cache=DataCache(settings.redis_url,settings.data_cache_ttl_seconds)
+    try:
+        cached=cache.get("status")
+        if cached is not None: return cached
+    except redis.RedisError:
+        cached=None
+    value=data_service_status(db)
+    try: cache.set("status",value)
+    except redis.RedisError: pass
+    return value
+
+@app.get("/api/data/records")
+def data_records(data_type: str | None = Query(default=None,max_length=40), symbol: str | None = Query(default=None,max_length=16), limit: int = Query(default=100,ge=1,le=1000), _: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    statement=select(DataRecord,Instrument.symbol).outerjoin(Instrument,DataRecord.instrument_id==Instrument.id).order_by(DataRecord.event_time.desc()).limit(limit)
+    if data_type: statement=statement.where(DataRecord.data_type==data_type.upper())
+    if symbol: statement=statement.where(Instrument.symbol==symbol.upper())
+    rows=db.execute(statement).all()
+    return [{"id":record.id,"symbol":record_symbol,"data_type":record.data_type,"event_time":record.event_time,"payload":record.payload,"quality_status":record.quality_status,"source_url":record.source_url} for record,record_symbol in rows]
+
+@app.get("/api/data/calendar")
+def data_calendar(start: date = Query(), end: date = Query(), _: Principal = Depends(current_principal)):
+    try: return sessions(start,end)
+    except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from None
+
+@app.post("/api/data/ingest")
+def data_ingest(payload: DataIngestRequest, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    try: run=ingest_data(db,settings,payload.provider,payload.dataset,payload.symbol,payload.series_id,payload.cik)
+    except ProviderError as exc: raise HTTPException(status_code=422,detail=str(exc)) from None
+    db.add(DevelopmentActivity(actor=principal.username,action="data_ingestion_requested",entity_type="ingestion_run",entity_id=run.id,detail=f"provider={payload.provider}; dataset={payload.dataset}; status={run.status}; accepted={run.accepted}; rejected={run.rejected}")); db.commit()
+    try: DataCache(settings.redis_url,settings.data_cache_ttl_seconds).invalidate()
+    except redis.RedisError: pass
+    if run.status=="ERROR": raise HTTPException(status_code=503,detail=run.detail)
+    return {"id":run.id,"provider":payload.provider,"dataset":run.dataset,"status":run.status,"accepted":run.accepted,"rejected":run.rejected,"detail":run.detail,"completed_at":run.completed_at,"trading":"DISABLED"}
     db.add(DevelopmentActivity(actor=principal.username, action="operator_preferences_updated", entity_type="operator_preference", entity_id=preference.id, detail="Updated console display preferences; sensitive-action confirmation remains required"))
     db.commit()
     db.refresh(preference)

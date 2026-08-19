@@ -1,8 +1,8 @@
 # Development Status
 
-- Current phase: Phase 2 — Aegis Console
+- Current phase: Phase 3 — Aegis Data
 - Current version: `0.2.0-console`
-- Verified Phase 1–2 roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; 0 BLOCKED; 0 WAITING_FOR_CREDENTIALS
+- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 foundation 8/12 COMPLETE and 4/12 WAITING_FOR_CREDENTIALS
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -61,6 +61,15 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - Docker and the PAM authentication bridge are enabled and active at boot. Every Aegis Compose service has `restart: unless-stopped`; the isolated broker bootstrap enables Docker, Nginx, and certificate renewal and gives its gateway the same restart policy. Both public HTTPS health checks passed with trading disabled. A destructive reboot was not required to verify the configuration.
 - Canonical roadmap tasks and `docs/operator-briefings.md` now preserve pre-market decision briefings, post-market highlights, attention alerts, public-source/citation rules, portfolio inputs, exchange-calendar scheduling, durable delivery, redaction, deduplication, retry, audit, and notification preferences. Delivery is WAITING FOR CREDENTIALS: an authorized transactional mail provider, verified sender identity/domain, and runtime secret are not configured, so no email was sent.
-Next: Phase 3 — Aegis Data. Trading remains disabled.
 - SMTP DNS, STARTTLS, certificate validation, authentication, and submission passed. Nathan approved test drafts for pre-market, post-market, and attention-alert email types.
 - Reboot-persistent cron scheduling uses headquarters time `America/Los_Angeles`: pre-market at 05:30 weekdays (one hour before the 06:30 Pacific open), post-market at 13:30 weekdays (30 minutes after the 13:00 Pacific close), and deduplicated health-transition monitoring every five minutes. Database/audit timestamps remain UTC. Alert state is persisted outside Git; healthy polling sends no email, while failures and recoveries send notification-only messages. Exchange-holiday calendar gating remains a Phase 3 task.
+
+## Verified 2026-08-18 — Phase 3 data foundation
+
+- Migration `0006_phase3_data` adds normalized providers, instruments, records, ingestion runs, and quality issues with indexed provenance and idempotent checksums.
+- Official adapters cover Alpha Vantage OHLCV/quotes/fundamentals/dividends/news, FRED economic observations, SEC EDGAR company facts, and NYSE session awareness. Reverse-engineered endpoints are prohibited.
+- Live credential-free validation passed: FRED returned 942 UNRATE observations through its official CSV endpoint; SEC EDGAR returned Apple company facts for CIK 0000320193.
+- Deterministic validation covers timestamp sanity, OHLC consistency, nonnegative volume, empty payloads, quote freshness, quality severity, and canonical checksums. Redis readiness caching is bounded and invalidated after ingestion.
+- Authenticated Data Sources UI and APIs expose readiness, bounded records, calendar sessions, audited ingestion, quality counts, freshness, and source URLs. Provider keys never enter the browser.
+- Backend pytest: 15/15 passed. Frontend production build/TypeScript passed. ESLint: 0 errors, 1 existing navigation warning. Vitest: 1/1 passed. Trading remains disabled.
+- Alpha Vantage-dependent history, realtime quotes, corporate actions, and news remain WAITING_FOR_CREDENTIALS until an official production key is configured and live ingestion passes.
