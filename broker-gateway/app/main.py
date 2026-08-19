@@ -343,6 +343,9 @@ def _argument_sets(name:str,schema:dict,account_number:str,datasets:dict,observe
     for candidate in ("account_number","account_id"):
         if candidate in properties:base[candidate]=account_number;break
     start=(observed-timedelta(days=366)).date().isoformat();end=observed.date().isoformat()
+    if name=="get_realized_pnl":
+        if "start_date" in properties:base["start_date"]=start
+        if "end_date" in properties:base["end_date"]=end
     for key in required:
         if key in base:continue
         if key in {"start_date","start_time","from_date"}:base[key]=start
