@@ -26,14 +26,15 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, OperatorPreference, Phase, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
-from .schemas import DataIngestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import DataIngestRequest, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .seed import seed_roadmap
 from .strategy_engine import canonical_checksum, evaluate
+from .lab.service import run_backtest, serialize_run
 
 configure_logging()
 log = structlog.get_logger()
@@ -125,7 +126,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 4, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 5, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -374,3 +375,32 @@ def strategy_decisions(version_id: int,limit: int=Query(default=50,ge=1,le=500),
     if db.get(StrategyVersion,version_id) is None: raise HTTPException(status_code=404,detail="Strategy version not found")
     rows=db.scalars(select(StrategyDecision).where(StrategyDecision.version_id==version_id).order_by(StrategyDecision.created_at.desc()).limit(limit)).all()
     return [{"id":row.id,"version_id":row.version_id,"symbol":row.symbol,"as_of":row.as_of,"decision":row.decision,"reason_codes":row.reason_codes,"proposed_weight_pct":row.proposed_weight_pct,"inputs":row.inputs,"risk_authorized":False,"executable":False,"trading":"DISABLED","created_at":row.created_at} for row in rows]
+
+@app.get("/api/lab/readiness")
+def lab_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    bars=db.scalar(select(func.count()).select_from(DataRecord).where(DataRecord.data_type=="OHLCV",DataRecord.quality_status!="REJECTED")) or 0
+    actions=db.scalar(select(func.count()).select_from(DataRecord).where(DataRecord.data_type=="CORPORATE_ACTION",DataRecord.quality_status!="REJECTED")) or 0
+    versions=db.scalar(select(func.count()).select_from(StrategyVersion)) or 0;runs=db.scalar(select(func.count()).select_from(LabRun)) or 0
+    return {"historical_bars":bars,"corporate_actions":actions,"strategy_versions":versions,"completed_runs":runs,"ready":bars>1 and versions>0,"next_requirement":None if bars>1 and versions>0 else "Ingest normalized OHLCV and create a strategy version","trading":"DISABLED"}
+
+@app.post("/api/lab/backtests",status_code=201)
+def create_lab_backtest(payload:LabBacktestRequest,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    try:run=run_backtest(db,payload,principal.username)
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
+    return serialize_run(run,include_curve=True)
+
+@app.get("/api/lab/backtests")
+def lab_backtests(limit:int=Query(default=25,ge=1,le=100),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    return [serialize_run(run) for run in db.scalars(select(LabRun).order_by(LabRun.created_at.desc()).limit(limit)).all()]
+
+@app.get("/api/lab/backtests/{run_id}")
+def lab_backtest(run_id:int,_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    run=db.get(LabRun,run_id)
+    if run is None:raise HTTPException(status_code=404,detail="Lab run not found")
+    return serialize_run(run,include_curve=True)
+
+@app.get("/api/lab/backtests/{run_id}/trades")
+def lab_trades(run_id:int,limit:int=Query(default=500,ge=1,le=5000),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    if db.get(LabRun,run_id) is None:raise HTTPException(status_code=404,detail="Lab run not found")
+    rows=db.scalars(select(LabTrade).where(LabTrade.run_id==run_id).order_by(LabTrade.entry_day).limit(limit)).all()
+    return [{"id":row.id,"symbol":row.symbol,"entry_day":row.entry_day,"exit_day":row.exit_day,"shares":row.shares,"entry_price":row.entry_price,"exit_price":row.exit_price,"dividends":row.dividends,"costs":row.costs,"pnl":row.pnl,"return_pct":row.return_pct,"holding_days":row.holding_days,"exit_reason":row.exit_reason,"max_drawdown_pct":row.max_drawdown_pct,"trading":"DISABLED"} for row in rows]

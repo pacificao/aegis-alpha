@@ -238,3 +238,39 @@ class StrategyEvaluationRequest(BaseModel):
         if any(not key.replace("_","").isalnum() or len(key)>64 for key in value): raise ValueError("Invalid fact name")
         if any(key.lower() in prohibited for key in value): raise ValueError("Credentials are prohibited in evaluation facts")
         return value
+
+class LabBacktestRequest(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    strategy_version_id:int=Field(gt=0)
+    symbols:list[str]=Field(min_length=1,max_length=25)
+    start_date:datetime
+    end_date:datetime
+    initial_capital:float=Field(gt=0,le=1_000_000_000)
+    commission_per_trade:float=Field(ge=0,le=100)
+    slippage_bps:float=Field(ge=0,le=500)
+    spread_bps:float=Field(ge=0,le=500)
+    max_position_pct:float=Field(gt=0,le=10)
+    max_allocation_pct:float=Field(gt=0,le=100)
+    entry_days_before_ex_date:int=Field(ge=1,le=10)
+    exit_method:Literal["PURCHASE_PRICE","PURCHASE_MINUS_DIVIDEND","PROFIT_TARGET","FIXED_5","FIXED_10","FIXED_15","FIXED_30","HISTORICAL_RECOVERY","VOLATILITY","HYBRID"]
+    profit_target_pct:float=Field(ge=0,le=100)
+    historical_recovery_days:int=Field(ge=1,le=1000)
+    volatility_multiplier:float=Field(gt=0,le=20)
+    hybrid_time_stop_days:int=Field(ge=1,le=1000)
+    max_holding_days:int=Field(ge=1,le=1000)
+    benchmark_symbol:str=Field(min_length=1,max_length=16,pattern=r"^[A-Za-z0-9.-]+$")
+    monte_carlo_iterations:int=Field(ge=10,le=5000)
+    random_seed:int=Field(ge=0,le=2_147_483_647)
+    run_sensitivity:bool=True
+    @field_validator("symbols")
+    @classmethod
+    def lab_symbols(cls,value):
+        clean=[v.strip().upper() for v in value]
+        if len(set(clean))!=len(clean) or any(not v or len(v)>16 or not v.replace(".","").replace("-","").isalnum() for v in clean):raise ValueError("Invalid or duplicate symbols")
+        return clean
+    @model_validator(mode="after")
+    def valid_window(self):
+        if self.start_date.tzinfo is None or self.end_date.tzinfo is None:raise ValueError("Backtest dates require timezone")
+        if self.start_date>=self.end_date:raise ValueError("start_date must precede end_date")
+        if (self.end_date-self.start_date).days>36525:raise ValueError("Backtest window exceeds 100 years")
+        return self
