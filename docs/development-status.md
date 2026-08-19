@@ -73,3 +73,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Authenticated Data Sources UI and APIs expose readiness, bounded records, calendar sessions, audited ingestion, quality counts, freshness, and source URLs. Provider keys never enter the browser.
 - Backend pytest: 15/15 passed. Frontend production build/TypeScript passed. ESLint: 0 errors, 1 existing navigation warning. Vitest: 1/1 passed. Trading remains disabled.
 - Alpha Vantage production validation passed with the protected runtime key: 100 SPY daily OHLCV records, one current quote, 111 dividend events, and 50 news records were accepted with zero rejects. The standard daily endpoint is used so the validated implementation does not require the premium adjusted-history endpoint.
+
+## Robinhood data expansion
+
+- Official Robinhood Trading MCP public-market reads are implemented behind a second, narrower gateway allowlist; account-private reads remain reserved for portfolio synchronization and every mutation/order capability remains blocked.
+- Authenticated Data Sources ingestion supports Robinhood market tools with bounded JSON arguments, credential rejection, audit history, provenance, and normalized broker-data categories. Live tool-schema/coverage verification requires deployment of the updated gateway to the isolated broker host.
+- Provider responsibilities and the complete safe-use roadmap are recorded in `docs/robinhood-capabilities.md`. Alpha Vantage remains required for reproducible deep adjusted backfill and independent research validation.

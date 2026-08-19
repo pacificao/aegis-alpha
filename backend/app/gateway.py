@@ -9,9 +9,9 @@ class BrokerGatewayClient:
         self.base_url = settings.broker_gateway_url.rstrip("/")
         self.headers = {"X-Aegis-Gateway-Key": settings.broker_gateway_shared_secret}
 
-    def _request(self, method: str, path: str) -> dict:
+    def _request(self, method: str, path: str, json: dict | None = None) -> dict:
         try:
-            response = httpx.request(method, f"{self.base_url}{path}", headers=self.headers, timeout=35)
+            response = httpx.request(method, f"{self.base_url}{path}", headers=self.headers, json=json, timeout=35)
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError):
@@ -19,6 +19,9 @@ class BrokerGatewayClient:
 
     def status(self) -> dict:
         return self._request("GET", "/internal/status")
+
+    def market_data(self, tool: str, arguments: dict) -> dict:
+        return self._request("POST", "/internal/market-data", json={"tool": tool, "arguments": arguments})
 
     def start_authorization(self) -> dict:
         return self._request("POST", "/internal/connect/start")

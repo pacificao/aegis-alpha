@@ -1,5 +1,5 @@
 import pytest
-from app.policy import enforce_tool_allowed, is_tool_allowed, parse_loopback_callback, validate_authorization_url
+from app.policy import MARKET_DATA_TOOLS, contains_sensitive_argument, enforce_tool_allowed, is_tool_allowed, parse_loopback_callback, validate_authorization_url
 
 
 def test_robinhood_protected_resource_is_the_full_official_mcp_endpoint():
@@ -62,3 +62,15 @@ def test_invalid_loopback_callbacks_fail_closed(url):
 def test_denied_loopback_callback_is_not_accepted():
     with pytest.raises(PermissionError):
         parse_loopback_callback("http://127.0.0.1:8765/callback?error=access_denied&state=x")
+
+
+def test_market_data_subset_is_public_read_only():
+    assert {"get_equity_historicals", "get_equity_quotes", "get_equity_fundamentals", "get_crypto_quotes"}.issubset(MARKET_DATA_TOOLS)
+    assert MARKET_DATA_TOOLS.issubset(__import__("app.policy", fromlist=["READ_ONLY_TOOLS"]).READ_ONLY_TOOLS)
+    assert not {"get_accounts", "get_portfolio", "get_equity_positions", "get_equity_orders"} & MARKET_DATA_TOOLS
+    assert not any(name.startswith(("place_", "cancel_", "create_", "update_", "review_")) for name in MARKET_DATA_TOOLS)
+
+
+def test_sensitive_market_arguments_are_rejected_recursively():
+    assert contains_sensitive_argument({"nested":{"token":"never-accepted"}})
+    assert not contains_sensitive_argument({"symbols":["SPY"],"interval":"day"})

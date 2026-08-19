@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.auth import Principal, csrf_protected, current_principal
 from app.data.calendar import market_session, sessions
+from app.schemas import RobinhoodDataIngestRequest
 from app.data.providers import AlphaVantageProvider, FredProvider, ProviderError, SecEdgarProvider
 from app.data.quality import checksum, validate
 from app.main import app
@@ -63,3 +64,14 @@ def test_phase3_data_routes_are_authenticated_and_safe(monkeypatch):
             assert invalid.status_code==422
     finally:
         app.dependency_overrides.clear()
+
+
+def test_robinhood_market_data_request_is_fail_closed():
+    valid=RobinhoodDataIngestRequest(tool="get_equity_quotes",symbol="SPY",arguments={"symbols":["SPY"]})
+    assert valid.tool=="get_equity_quotes"
+    for payload in (
+        {"tool":"place_equity_order","arguments":{}},
+        {"tool":"get_equity_quotes","arguments":{"token":"prohibited"}},
+    ):
+        try: RobinhoodDataIngestRequest(**payload); assert False
+        except ValueError: pass

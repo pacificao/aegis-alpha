@@ -10,9 +10,25 @@ READ_ONLY_TOOLS = frozenset({
     "get_equity_orders", "get_equity_tradability", "get_option_historicals", "get_option_chains",
     "get_option_instruments", "get_option_quotes", "get_option_positions", "get_option_orders",
     "get_scans", "get_scanner_filter_specs", "run_scan",
+    "get_currency_pairs", "get_crypto_quotes", "get_crypto_positions", "get_crypto_orders",
 })
+MARKET_DATA_TOOLS = frozenset({
+    "get_equity_historicals", "get_equity_fundamentals", "get_financials", "get_equity_price_book",
+    "get_equity_technical_indicators", "get_earnings_results", "get_earnings_calendar", "get_indexes",
+    "get_index_quotes", "get_equity_quotes", "get_equity_tradability", "get_option_historicals",
+    "get_option_chains", "get_option_instruments", "get_option_quotes", "get_currency_pairs",
+    "get_crypto_quotes",
+})
+SENSITIVE_ARGUMENT_KEYS = frozenset({"password", "secret", "token", "authorization", "api_key", "apikey"})
 MUTATION_PREFIXES = ("place_", "cancel_", "create_", "update_", "add_", "remove_", "follow_", "unfollow_", "review_")
 
+
+def contains_sensitive_argument(item) -> bool:
+    if isinstance(item, dict):
+        return any(str(key).lower() in SENSITIVE_ARGUMENT_KEYS or contains_sensitive_argument(value) for key, value in item.items())
+    if isinstance(item, list):
+        return any(contains_sensitive_argument(value) for value in item)
+    return False
 
 def is_tool_allowed(name: str) -> bool:
     return name in READ_ONLY_TOOLS and not name.startswith(MUTATION_PREFIXES)

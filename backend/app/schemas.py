@@ -115,6 +115,35 @@ class DataIngestRequest(BaseModel):
             raise ValueError("cik is required for SEC company facts")
         return self
 
+RobinhoodMarketTool = Literal[
+    "get_equity_historicals", "get_equity_fundamentals", "get_financials", "get_equity_price_book",
+    "get_equity_technical_indicators", "get_earnings_results", "get_earnings_calendar", "get_indexes",
+    "get_index_quotes", "get_equity_quotes", "get_equity_tradability", "get_option_historicals",
+    "get_option_chains", "get_option_instruments", "get_option_quotes", "get_currency_pairs", "get_crypto_quotes",
+]
+
+class RobinhoodDataIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool: RobinhoodMarketTool
+    symbol: str | None = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9./:-]+$")
+    arguments: dict = Field(default_factory=dict)
+
+    @field_validator("arguments")
+    @classmethod
+    def safe_arguments(cls, value: dict) -> dict:
+        if len(json.dumps(value)) > 8_192:
+            raise ValueError("Robinhood market-data arguments are too large")
+        prohibited = {"password", "secret", "token", "authorization", "api_key", "apikey"}
+        def contains_prohibited(item) -> bool:
+            if isinstance(item, dict):
+                return any(str(key).lower() in prohibited or contains_prohibited(child) for key, child in item.items())
+            if isinstance(item, list):
+                return any(contains_prohibited(child) for child in item)
+            return False
+        if contains_prohibited(value):
+            raise ValueError("Credentials are prohibited in market-data arguments")
+        return value
+
 class DataRecordOut(BaseModel):
     id: int
     symbol: str | None
