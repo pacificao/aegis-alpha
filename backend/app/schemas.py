@@ -149,3 +149,92 @@ class DataRecordOut(BaseModel):
     symbol: str | None
     data_type: str
     event_time: datetime
+
+Scalar = bool | int | float | str
+
+class StrategyRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: str = Field(min_length=1,max_length=64,pattern=r"^[a-z][a-z0-9_]*$")
+    operator: Literal["eq","ne","gt","gte","lt","lte","in","not_in"]
+    value: Scalar | list[Scalar]
+    reason: str = Field(min_length=1,max_length=64,pattern=r"^[A-Za-z][A-Za-z0-9_]*$")
+    @model_validator(mode="after")
+    def collection_operator_contract(self):
+        if self.operator in {"in","not_in"} and not isinstance(self.value,list):
+            raise ValueError("in/not_in rules require a list value")
+        return self
+
+class IndicatorSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1,max_length=64,pattern=r"^[a-z][a-z0-9_]*$")
+    kind: Literal["SOURCE_FIELD","SMA","EMA","RSI","ATR","EVENT_YIELD","RECOVERY_DAYS"]
+    source: str = Field(min_length=1,max_length=64,pattern=r"^[a-z][a-z0-9_]*$")
+    period: int | None = Field(default=None,ge=1,le=1000)
+
+class UniverseSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    symbols: list[str] = Field(default_factory=list,max_length=500)
+    exclude_symbols: list[str] = Field(default_factory=list,max_length=500)
+    asset_types: list[Literal["EQUITY","ETF","REIT"]] = Field(default_factory=lambda:["EQUITY"])
+    @field_validator("symbols","exclude_symbols")
+    @classmethod
+    def symbols_are_safe(cls,value:list[str])->list[str]:
+        clean=[item.strip().upper() for item in value]
+        if any(not item or len(item)>16 or not item.replace(".","").replace("-","").isalnum() for item in clean): raise ValueError("Invalid universe symbol")
+        if len(set(clean))!=len(clean): raise ValueError("Universe symbols must be unique")
+        return clean
+
+class PositionSizingSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    method: Literal["FIXED_PERCENT","EQUAL_WEIGHT"] = "FIXED_PERCENT"
+    max_position_pct: float = Field(gt=0,le=10)
+    max_strategy_allocation_pct: float = Field(gt=0,le=100)
+    cash_buffer_pct: float = Field(ge=0,lt=100)
+
+class ScheduleSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    calendar: Literal["NYSE"] = "NYSE"
+    timezone: Literal["America/New_York"] = "America/New_York"
+    frequency: Literal["DAILY","WEEKLY","EVENT_DRIVEN"]
+    evaluation_time: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+
+class StrategySpecification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal[1] = 1
+    name: str = Field(min_length=1,max_length=120)
+    universe: UniverseSpec
+    indicators: list[IndicatorSpec] = Field(max_length=64)
+    entry_rules: list[StrategyRule] = Field(min_length=1,max_length=64)
+    exit_rules: list[StrategyRule] = Field(min_length=1,max_length=64)
+    filters: list[StrategyRule] = Field(default_factory=list,max_length=64)
+    position_sizing: PositionSizingSpec
+    schedule: ScheduleSpec
+    parameters: dict[str,Scalar|list[Scalar]] = Field(default_factory=dict)
+    @field_validator("parameters")
+    @classmethod
+    def bounded_parameters(cls,value):
+        if len(value)>64 or len(json.dumps(value))>16000: raise ValueError("Strategy parameters exceed limits")
+        return value
+
+class StrategyVersionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    specification: StrategySpecification
+
+class StrategyEvaluationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    symbol: str = Field(min_length=1,max_length=16,pattern=r"^[A-Za-z0-9.-]+$")
+    as_of: datetime
+    facts: dict[str,Scalar|list[Scalar]] = Field(max_length=128)
+    @field_validator("as_of")
+    @classmethod
+    def timezone_required(cls,value):
+        if value.tzinfo is None: raise ValueError("as_of must include timezone")
+        return value
+    @field_validator("facts")
+    @classmethod
+    def bounded_safe_facts(cls,value):
+        prohibited={"password","secret","token","authorization","api_key","apikey"}
+        if len(json.dumps(value))>32000: raise ValueError("Evaluation facts exceed limits")
+        if any(not key.replace("_","").isalnum() or len(key)>64 for key in value): raise ValueError("Invalid fact name")
+        if any(key.lower() in prohibited for key in value): raise ValueError("Credentials are prohibited in evaluation facts")
+        return value

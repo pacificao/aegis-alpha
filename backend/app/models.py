@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Float, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -138,3 +138,25 @@ class DataQualityIssue(Base):
     code: Mapped[str] = mapped_column(String(60), index=True)
     detail: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+class StrategyVersion(Base):
+    __tablename__ = "strategy_versions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scenario_id: Mapped[int] = mapped_column(ForeignKey("strategy_scenarios.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    specification: Mapped[dict] = mapped_column(JSON)
+    checksum: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class StrategyDecision(Base):
+    __tablename__ = "strategy_decisions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version_id: Mapped[int] = mapped_column(ForeignKey("strategy_versions.id", ondelete="RESTRICT"), index=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    decision: Mapped[str] = mapped_column(String(12), index=True)
+    reason_codes: Mapped[list] = mapped_column(JSON)
+    proposed_weight_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    inputs: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
