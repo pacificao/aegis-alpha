@@ -313,3 +313,31 @@ class RiskPolicyCreate(BaseModel):
     model_config=ConfigDict(extra="forbid")
     name:str=Field(min_length=3,max_length=120)
     configuration:RiskPolicyConfiguration
+
+class IntelligenceEvidence(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    source_url:str=Field(min_length=12,max_length=500,pattern=r"^https://");title:str=Field(min_length=3,max_length=200);as_of:datetime;max_age_seconds:int=Field(gt=0,le=2592000);claim:str=Field(min_length=3,max_length=1000)
+    @field_validator("as_of")
+    @classmethod
+    def intelligence_timezone(cls,value):
+        if value.tzinfo is None:raise ValueError("Evidence timestamps require timezone")
+        return value
+class IntelligenceArtifactCreate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    artifact_type:Literal["STRATEGY_CREATION","STRATEGY_CRITIQUE","MARKET_REGIME","NEWS_ANALYSIS","FUNDAMENTAL_ANALYSIS","PARAMETER_RESEARCH","POST_TRADE_REVIEW","ANOMALY_DETECTION","PREMARKET_BRIEFING","POSTMARKET_DIGEST","ATTENTION_ALERT"]
+    subject:str=Field(min_length=3,max_length=160);thesis:str=Field(min_length=10,max_length=5000);recommendation:Literal["RESEARCH","HOLD","ADJUST","BUY","SELL","PAUSE","ESCALATE"]
+    confidence:float=Field(ge=0,le=1);evidence:list[IntelligenceEvidence]=Field(min_length=1,max_length=50);analysis:dict
+    @model_validator(mode="after")
+    def bounded_analysis(self):
+        encoded=json.dumps(self.analysis,sort_keys=True,allow_nan=False)
+        if len(encoded)>20000:raise ValueError("Analysis exceeds 20 KB")
+        blocked={"password","passwd","secret","token","credential","api_key","authorization"}
+        def keys(value):
+            if isinstance(value,dict):return {str(k).lower() for k in value}|set().union(*(keys(v) for v in value.values()))
+            if isinstance(value,list):return set().union(*(keys(v) for v in value),set())
+            return set()
+        if keys(self.analysis)&blocked:raise ValueError("Credential-like fields are prohibited")
+        return self
+class IntelligenceReviewCreate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    reviewer:str=Field(min_length=3,max_length=80);verdict:Literal["APPROVE","REJECT","ABSTAIN"];confidence:float=Field(ge=0,le=1);rationale:str=Field(min_length=10,max_length=3000);evidence_checksum:str=Field(min_length=64,max_length=64,pattern=r"^[a-f0-9]{64}$")

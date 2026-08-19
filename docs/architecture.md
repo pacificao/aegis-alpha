@@ -26,3 +26,7 @@ Aegis Lab depends inward on immutable Strategy Engine versions and trusted Data 
 ## Phase 6 risk boundary
 
 Strategy proposals enter a pure deterministic RiskEngine with an immutable policy and frozen portfolio/market snapshot. It persists every check and reason code. Risk has no broker or execution dependency; authorization remains non-executable while trading is disabled. Kill switch, circuit breaker, duplicates, stale evidence, and missing facts fail closed.
+
+## Aegis Intelligence (Phase 7)
+
+Provider/model clients submit bounded cited artifacts to the authenticated Intelligence API. PostgreSQL stores immutable evidence/checksum artifacts and independent reviews. The Strategy Council deterministically derives `HUMAN_REVIEW`, `REJECTED`, or `ELIGIBLE_FOR_RISK_REVIEW`; it never authorizes risk. The existing deterministic RiskEngine remains the sole authorization boundary and execution remains absent.
