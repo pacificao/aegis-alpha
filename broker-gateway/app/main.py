@@ -1,4 +1,5 @@
 """Aegis-owned Robinhood OAuth client and read-only MCP enforcement gateway."""
+import json
 import secrets
 import asyncio
 import os
@@ -15,7 +16,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import OAuthClientMetadata
 from pydantic import AnyUrl, BaseModel, Field
 
-from .policy import READ_ONLY_TOOLS, enforce_tool_allowed, parse_loopback_callback, validate_authorization_url
+from .policy import MARKET_DATA_TOOLS, READ_ONLY_TOOLS, contains_sensitive_argument, enforce_tool_allowed, parse_loopback_callback, validate_authorization_url
 from .storage import EncryptedFileTokenStorage
 
 MCP_URL = "https://agent.robinhood.com/mcp/trading"
@@ -68,6 +69,67 @@ def health():
 @app.get("/internal/status", dependencies=[Depends(internal_auth)])
 def status():
     return public_state()
+
+
+def tool_payload(result) -> object:
+    structured=getattr(result,"structuredContent",None)
+    if structured is not None: return structured
+    values = []
+    for item in result.content:
+        value = getattr(item, "text", None)
+        if value is None:
+            continue
+        try:
+            values.append(json.loads(value))
+        except (TypeError, json.JSONDecodeError):
+            values.append(value)
+    return values[0] if len(values) == 1 else values
+
+
+class MarketDataRequest(BaseModel):
+    tool: str = Field(min_length=3, max_length=80)
+    arguments: dict = Field(default_factory=dict)
+
+
+@app.post("/internal/market-data", dependencies=[Depends(internal_auth)])
+async def market_data(payload: MarketDataRequest):
+    if payload.tool not in MARKET_DATA_TOOLS:
+        raise HTTPException(status_code=403, detail="Tool is not an approved public market-data read")
+    if len(json.dumps(payload.arguments, separators=(",", ":"))) > 8192:
+        raise HTTPException(status_code=422, detail="Market-data arguments are too large")
+    if contains_sensitive_argument(payload.arguments):
+        raise HTTPException(status_code=422, detail="Credentials are prohibited in market-data arguments")
+
+    async def no_redirect(_: str) -> None:
+        raise RuntimeError("Robinhood reauthorization is required")
+
+    async def no_callback() -> tuple[str, str | None]:
+        raise RuntimeError("Robinhood reauthorization is required")
+
+    provider = OAuthClientProvider(
+        server_url=MCP_URL,
+        client_metadata=OAuthClientMetadata(
+            client_name="Aegis Alpha Read-Only Gateway",
+            redirect_uris=[AnyUrl(OAUTH_REDIRECT_URI)],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+            scope="internal",
+        ),
+        storage=storage,
+        redirect_handler=no_redirect,
+        callback_handler=no_callback,
+    )
+    try:
+        async with httpx.AsyncClient(auth=provider, follow_redirects=True, timeout=30) as client:
+            async with streamable_http_client(MCP_URL, http_client=client) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await call_read_only_tool(session, payload.tool, payload.arguments)
+                    if result.isError:
+                        raise RuntimeError("Robinhood market-data tool failed")
+                    return {"tool": payload.tool, "data": tool_payload(result), "trading": "DISABLED"}
+    except Exception:
+        raise HTTPException(status_code=502, detail="Robinhood market-data request failed") from None
 
 
 async def connect_and_validate() -> None:

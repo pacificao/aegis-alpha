@@ -72,6 +72,39 @@ def ingest(db: Session, settings: Settings, name: str, dataset: str, symbol: str
     run.completed_at=datetime.now(UTC); db.commit(); db.refresh(run)
     return run
 
+ROBINHOOD_TYPES={
+    "get_equity_historicals":"BROKER_OHLCV", "get_equity_fundamentals":"BROKER_FUNDAMENTAL",
+    "get_financials":"BROKER_FINANCIAL", "get_equity_price_book":"BROKER_ORDER_BOOK",
+    "get_equity_technical_indicators":"BROKER_TECHNICAL", "get_earnings_results":"BROKER_EARNINGS",
+    "get_earnings_calendar":"BROKER_EARNINGS", "get_indexes":"BROKER_INDEX",
+    "get_index_quotes":"BROKER_INDEX_QUOTE", "get_equity_quotes":"BROKER_QUOTE",
+    "get_equity_tradability":"BROKER_REFERENCE", "get_option_historicals":"BROKER_OPTION",
+    "get_option_chains":"BROKER_OPTION", "get_option_instruments":"BROKER_OPTION",
+    "get_option_quotes":"BROKER_OPTION_QUOTE", "get_currency_pairs":"BROKER_CRYPTO_REFERENCE",
+    "get_crypto_quotes":"BROKER_CRYPTO_QUOTE",
+}
+
+def ingest_robinhood(db: Session, settings: Settings, tool: str, arguments: dict, symbol: str | None = None) -> IngestionRun:
+    from ..gateway import BrokerGatewayClient
+    if tool not in ROBINHOOD_TYPES: raise ProviderError("Robinhood tool is not an approved market-data read")
+    provider=db.scalar(select(DataProvider).where(DataProvider.name=="robinhood"))
+    if provider is None: raise ProviderError("Robinhood data provider is not initialized")
+    run=IngestionRun(provider_id=provider.id,dataset=tool,status="RUNNING",accepted=0,rejected=0,detail="")
+    db.add(run); db.commit(); db.refresh(run)
+    try:
+        response=BrokerGatewayClient(settings).market_data(tool,arguments)
+        if response.get("status")=="ERROR" or "data" not in response: raise ProviderError("Robinhood market-data gateway is unavailable")
+        observed=datetime.now(UTC)
+        target=symbol or "GLOBAL"
+        item=NormalizedItem(ROBINHOOD_TYPES[tool],f"{tool}:{target}:{observed.isoformat()}",observed,"snapshot",{"tool":tool,"arguments":arguments,"result":response["data"]},"https://agent.robinhood.com/mcp/trading")
+        accepted,rejected=store(db,provider,symbol,[item])
+        run.status="COMPLETE"; run.accepted=accepted; run.rejected=rejected; run.detail=f"Accepted {accepted}; rejected {rejected}"
+        provider.last_success_at=observed; provider.last_error=""; provider.credential_status="CONFIGURED"
+    except Exception as exc:
+        db.rollback(); run=db.get(IngestionRun,run.id); provider=db.get(DataProvider,provider.id)
+        run.status="ERROR"; run.detail=str(exc)[:500]; provider.last_error=type(exc).__name__
+    run.completed_at=datetime.now(UTC); db.commit(); db.refresh(run); return run
+
 def status(db: Session) -> dict:
     providers=db.scalars(select(DataProvider).order_by(DataProvider.name)).all()
     latest={}

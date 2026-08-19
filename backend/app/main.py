@@ -27,11 +27,11 @@ from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
 from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, OperatorPreference, Phase, StrategyScenario, Task, TaskStatus
-from .schemas import DataIngestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, ScenarioUpdate, TaskOut, TaskUpdate
+from .schemas import DataIngestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
-from .data.service import ingest as ingest_data, status as data_service_status
+from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .seed import seed_roadmap
 
 configure_logging()
@@ -285,6 +285,10 @@ def update_preferences(payload: OperatorPreferenceUpdate, principal: Principal =
     preference.compact_mode = payload.compact_mode
     preference.page_size = payload.page_size
     preference.confirm_sensitive_actions = True
+    db.add(DevelopmentActivity(actor=principal.username, action="operator_preferences_updated", entity_type="operator_preference", entity_id=preference.id, detail="Updated console display preferences; sensitive-action confirmation remains required"))
+    db.commit()
+    db.refresh(preference)
+    return preference
 
 @app.get("/api/data/status")
 def data_status(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
@@ -312,6 +316,16 @@ def data_calendar(start: date = Query(), end: date = Query(), _: Principal = Dep
     try: return sessions(start,end)
     except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from None
 
+@app.post("/api/data/robinhood/ingest")
+def robinhood_data_ingest(payload: RobinhoodDataIngestRequest, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    run=ingest_robinhood(db,settings,payload.tool,payload.arguments,payload.symbol)
+    db.add(DevelopmentActivity(actor=principal.username,action="robinhood_data_ingestion_requested",entity_type="ingestion_run",entity_id=run.id,detail=f"tool={payload.tool}; status={run.status}; accepted={run.accepted}; rejected={run.rejected}; trading=DISABLED"))
+    db.commit()
+    try: DataCache(settings.redis_url,settings.data_cache_ttl_seconds).invalidate()
+    except redis.RedisError: pass
+    if run.status=="ERROR": raise HTTPException(status_code=503,detail=run.detail)
+    return {"id":run.id,"provider":"robinhood","dataset":run.dataset,"status":run.status,"accepted":run.accepted,"rejected":run.rejected,"detail":run.detail,"completed_at":run.completed_at,"trading":"DISABLED"}
+
 @app.post("/api/data/ingest")
 def data_ingest(payload: DataIngestRequest, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
     try: run=ingest_data(db,settings,payload.provider,payload.dataset,payload.symbol,payload.series_id,payload.cik)
@@ -321,7 +335,3 @@ def data_ingest(payload: DataIngestRequest, principal: Principal = Depends(csrf_
     except redis.RedisError: pass
     if run.status=="ERROR": raise HTTPException(status_code=503,detail=run.detail)
     return {"id":run.id,"provider":payload.provider,"dataset":run.dataset,"status":run.status,"accepted":run.accepted,"rejected":run.rejected,"detail":run.detail,"completed_at":run.completed_at,"trading":"DISABLED"}
-    db.add(DevelopmentActivity(actor=principal.username, action="operator_preferences_updated", entity_type="operator_preference", entity_id=preference.id, detail="Updated console display preferences; sensitive-action confirmation remains required"))
-    db.commit()
-    db.refresh(preference)
-    return preference
