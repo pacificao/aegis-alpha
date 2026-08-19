@@ -25,6 +25,8 @@ def test_parameterized_account_reads_are_bounded_and_fail_closed():
  assert tax==[{"account_number":"private","symbol":"AAPL"},{"account_number":"private","symbol":"SPY"}]
  pnl=_argument_sets("get_realized_pnl",{"required":["account_number","start_date","end_date"],"properties":{"account_number":{},"start_date":{},"end_date":{}}},"private",{},observed)
  assert pnl==[{"account_number":"private","start_date":"2025-08-18","end_date":"2026-08-19"}]
+ pnl_optional=_argument_sets("get_realized_pnl",{"required":["account_number"],"properties":{"account_number":{},"start_date":{},"end_date":{},"span":{}}},"private",{},observed)
+ assert pnl_optional==[{"account_number":"private","start_date":"2025-08-18","end_date":"2026-08-19"}]
  assert _argument_sets("unknown",{"required":["account_number","unsafe_mode"],"properties":{"account_number":{},"unsafe_mode":{}}},"private",{},observed) is None
 
 def test_execution_schema_mapping_is_exact_and_bounded():
