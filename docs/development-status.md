@@ -1,6 +1,6 @@
 # Development Status
 
-- Current phase: Phase 9 — Aegis Gateway COMPLETE; Phase 10 is next
+- Current phase: Phase 9 — Aegis Gateway COMPLETE; Phase 10 controlled-trial readiness is IN PROGRESS
 - Current version: `0.8.0-gateway`
 - Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE; Phase 7 14/14 COMPLETE; Phase 8 6/6 COMPLETE; Phase 9 14/14 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
@@ -161,3 +161,12 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Deleted 4.738 GB of reproducible unused Docker build cache and 2.793 GB of images unused by every container. Root filesystem usage fell from 97% (790 MB free) to 37% (15 GB free). Containers, all six active service images, volumes, PostgreSQL/Redis data, backups, credentials, and broker state were preserved.
 
 - Deployment acceptance: all six containers healthy; HTTPS login returned 200; protected Portfolio returned 401 unauthenticated; backend health reported trading `DISABLED`. Only 22, 80, 443 and the pre-existing Phase 10-tracked port 21 listen publicly; internal application and data ports remain private.
+
+
+## Phase 10 controlled-trial readiness (2026-08-19)
+
+- Added an immutable controlled trade-intent and human-approval ledger. An intent requires an AUTHORIZED deterministic RiskEngine assessment linked to an immutable strategy decision, freezes symbol, side, quantity, LIMIT price, checksums, account scope and a five-minute expiry, and rejects reuse or drift. Approval requires the exact checksum and explicit phrase. Both creation and approval report broker-called false, executable false and trading DISABLED.
+- Added the Production Trial UI with readiness gates, strategy selection, conservative risk-profile metrics, non-executable intent review and typed approval. Investment BI remains investment-only; operational state stays under System.
+- Added research templates for Trend Momentum, Mean Reversion, Quality Value, Volatility Breakout and paper-only Pairs Reversion. Strategy-specific indicators, entry/exit rules and allocation limits are versioned; no template is presumed profitable.
+- Added immutable portfolio-history retrieval and a scheduled read-only snapshot job for defensible future charts. Historical depth is evidence-gated and is never fabricated.
+- Migration 0014 creates the approval ledger. Backend 46/46, frontend Vitest 1/1 and production frontend build/TypeScript passed before deployment. Live order submission remains unavailable. Port 21 remediation, isolated execution-adapter deployment, operator authorization, parameterized tax-lot/P&L validation, fill reconciliation and real-capital acceptance remain BLOCKED or IN PROGRESS; therefore Phase 10 is not complete and Aegis is not authorized to trade.

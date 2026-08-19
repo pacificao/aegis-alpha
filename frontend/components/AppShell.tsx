@@ -8,6 +8,7 @@ const groups=[
   {label:"Portfolio",icon:Landmark,items:[
     ["/portfolio","Overview"],
     ["/risk","Risk controls"],
+    ["/trial","Production trial"],
   ]},
   {label:"Scenarios",icon:BookOpen,items:[
     ["/strategies","Library & parameters"],
