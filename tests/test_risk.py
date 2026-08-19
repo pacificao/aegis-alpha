@@ -5,7 +5,8 @@ from app.auth import Principal,csrf_protected,current_principal
 from app.database import SessionLocal
 from app.main import app
 from app.risk.engine import evaluate
-from app.risk.service import DEFAULT_POLICY
+from app.risk.service import DEFAULT_POLICY,effective_policy
+from app.models import StrategyScenario,StrategyVersion,StrategyDecision
 
 NOW=datetime(2026,8,19,15,0,tzinfo=UTC)
 def proposal(**changes):
@@ -48,3 +49,14 @@ def test_risk_api_auth_persistence_deduplication_and_controls():
         rejected=client.post("/api/risk/assessments",json=payload,headers={"X-CSRF-Token":"csrf"});assert "KILL_SWITCH_CLEAR" in rejected.json()["reason_codes"]
         client.patch("/api/risk/controls",json={"kill_switch_engaged":False,"circuit_breaker_engaged":False,"reason":"Reset after test"},headers={"X-CSRF-Token":"csrf"})
     finally:app.dependency_overrides.clear()
+
+
+def test_strategy_limits_can_only_tighten_global_policy():
+    marker=uuid4().hex
+    with SessionLocal() as db:
+        scenario=StrategyScenario(name=f"Risk overlay {marker}",strategy_type="MEAN_REVERSION",description="fixture",lifecycle="RESEARCH",parameters={});db.add(scenario);db.flush()
+        version=StrategyVersion(scenario_id=scenario.id,version=1,specification={"position_sizing":{"max_position_pct":0.25,"max_strategy_allocation_pct":5.0},"parameters":{"max_drawdown_pct":4.0}},checksum=marker.ljust(64,"0"),created_by="test");db.add(version);db.flush()
+        decision=StrategyDecision(version_id=version.id,symbol="SPY",as_of=NOW,decision="ENTRY",reason_codes=[],proposed_weight_pct=0.25,inputs={});db.add(decision);db.flush()
+        bounded=effective_policy(db,DEFAULT_POLICY,decision.id)
+        assert bounded["max_position_pct"]==0.25 and bounded["max_portfolio_exposure_pct"]==5.0 and bounded["max_drawdown_pct"]==4.0
+        assert effective_policy(db,{**DEFAULT_POLICY,"max_position_pct":0.1},decision.id)["max_position_pct"]==0.1

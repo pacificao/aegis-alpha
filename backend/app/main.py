@@ -1,6 +1,6 @@
 import time
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import redis
 import structlog
@@ -26,8 +26,8 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
-from .schemas import DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledTradeIntent, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
@@ -514,3 +514,60 @@ def paper_orders(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(cu
     for order in rows:
         fill=db.scalar(select(PaperFill).where(PaperFill.order_id==order.id));result.append({"id":order.id,"risk_assessment_id":order.risk_assessment_id,"quote_record_id":order.quote_record_id,"symbol":order.symbol,"side":order.side,"quantity":order.quantity,"status":order.status,"reason":order.reason,"fill":{"price":fill.price,"quantity":fill.quantity,"commission":fill.commission,"slippage_bps":fill.slippage_bps,"filled_at":fill.filled_at} if fill else None,"environment":"PAPER","broker_called":False,"executable_live":False,"trading":"DISABLED","created_at":order.created_at})
     return result
+
+
+def serialize_controlled_intent(row:ControlledTradeIntent):
+    return {"id":row.id,"risk_assessment_id":row.risk_assessment_id,"strategy_decision_id":row.strategy_decision_id,"symbol":row.symbol,"side":row.side,"quantity":row.quantity,"order_type":row.order_type,"limit_price":row.limit_price,"status":row.status,"intent_checksum":row.intent_checksum,"expires_at":row.expires_at,"approved_by":row.approved_by,"approved_at":row.approved_at,"rejection_reason":row.rejection_reason,"human_approval_required":row.status=="PROPOSED","executable":False,"broker_called":False,"trading":"DISABLED","created_by":row.created_by,"created_at":row.created_at}
+
+@app.get("/api/portfolio/history")
+def portfolio_history(limit:int=Query(default=500,ge=2,le=2000),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    rows=list(db.scalars(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()).limit(limit)).all());rows.reverse();points=[]
+    for row in rows:
+        summary=serialize_snapshot(row,"HISTORICAL")["snapshot"]["summary"];points.append({"snapshot_id":row.id,"observed_at":row.source_observed_at,"portfolio_value":summary["portfolio_value"],"cash":summary["cash"],"buying_power":summary["buying_power"],"holding_count":summary["holding_count"],"status":row.status})
+    values=[p["portfolio_value"] for p in points if p["portfolio_value"] is not None];change_pct=((values[-1]/values[0]-1)*100) if len(values)>1 and values[0] else None
+    return {"points":points,"snapshot_count":len(points),"change_pct":change_pct,"direction":"UP" if change_pct is not None and change_pct>0 else "DOWN" if change_pct is not None and change_pct<0 else "FLAT" if change_pct==0 else "BASELINE","trading":"DISABLED"}
+
+@app.get("/api/controlled-live/readiness")
+def controlled_live_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"));snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()));controls=db.get(RiskControlState,1);now=datetime.now(UTC);age=None
+    if snapshot:
+        observed=snapshot.source_observed_at if snapshot.source_observed_at.tzinfo else snapshot.source_observed_at.replace(tzinfo=UTC);age=max(0,int((now-observed).total_seconds()))
+    gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":False,"ftp_port_remediated":False,"operator_live_authorization":False}
+    return {"paper_trial_ready":all(gates[k] for k in ("single_account_selected","broker_snapshot_present","broker_snapshot_fresh","risk_controls_clear","human_approval_ledger")),"live_ready":all(gates.values()),"gates":gates,"snapshot_age_seconds":age,"mode":"CONTROLLED_TRIAL","order_submission_available":False,"trading":"DISABLED"}
+
+@app.get("/api/controlled-live/intents")
+def controlled_intents(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    return [serialize_controlled_intent(row) for row in db.scalars(select(ControlledTradeIntent).order_by(ControlledTradeIntent.created_at.desc()).limit(limit)).all()]
+
+@app.post("/api/controlled-live/intents",status_code=201)
+def create_controlled_intent(payload:ControlledIntentCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    risk=db.get(RiskAssessment,payload.risk_assessment_id)
+    if risk is None:raise HTTPException(status_code=404,detail="Risk assessment not found")
+    if not risk.risk_authorized or risk.outcome!="AUTHORIZED":raise HTTPException(status_code=409,detail="Deterministic RiskEngine authorization is required")
+    if risk.strategy_decision_id is None:raise HTTPException(status_code=409,detail="A versioned strategy decision is required")
+    decision=db.get(StrategyDecision,risk.strategy_decision_id)
+    if decision is None or decision.decision not in {"ENTRY","EXIT"}:raise HTTPException(status_code=409,detail="Strategy decision must propose ENTRY or EXIT")
+    request=risk.request_snapshot;expected_side="BUY" if decision.decision=="ENTRY" else "SELL"
+    if request.get("side")!=expected_side or request.get("symbol")!=decision.symbol:raise HTTPException(status_code=409,detail="Risk snapshot does not match strategy decision")
+    if db.scalar(select(ControlledTradeIntent).where(ControlledTradeIntent.risk_assessment_id==risk.id)):raise HTTPException(status_code=409,detail="Risk authorization already has an intent")
+    config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"))
+    if config is None or not config.selected_account_ref:raise HTTPException(status_code=409,detail="Single controlled account is not selected")
+    now=datetime.now(UTC);frozen={"risk_assessment_id":risk.id,"risk_checksum":risk.request_checksum,"strategy_decision_id":decision.id,"symbol":decision.symbol,"side":expected_side,"quantity":request["quantity"],"order_type":"LIMIT","limit_price":request["price"],"account_scope":"SINGLE_ACCOUNT","expires_at":(now+timedelta(minutes=5)).isoformat(),"trading":"DISABLED"};checksum=canonical_checksum(frozen)
+    row=ControlledTradeIntent(risk_assessment_id=risk.id,strategy_decision_id=decision.id,symbol=decision.symbol,side=expected_side,quantity=request["quantity"],order_type="LIMIT",limit_price=request["price"],status="PROPOSED",intent_checksum=checksum,intent_snapshot=frozen,expires_at=now+timedelta(minutes=5),created_by=principal.username);db.add(row);db.flush();db.add(DevelopmentActivity(actor=principal.username,action="controlled_trade_intent_created",entity_type="controlled_trade_intent",entity_id=row.id,detail=f"strategy_decision={decision.id}; risk_assessment={risk.id}; human_approval_required=true; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row);return serialize_controlled_intent(row)
+
+@app.post("/api/controlled-live/intents/{intent_id}/approve")
+def approve_controlled_intent(intent_id:int,payload:ControlledIntentApproval,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(ControlledTradeIntent,intent_id)
+    if row is None:raise HTTPException(status_code=404,detail="Intent not found")
+    now=datetime.now(UTC);expires=row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=UTC)
+    if row.status!="PROPOSED":raise HTTPException(status_code=409,detail="Intent is not awaiting approval")
+    if now>=expires:row.status="EXPIRED";db.commit();raise HTTPException(status_code=409,detail="Intent expired; obtain fresh strategy and risk evidence")
+    if payload.intent_checksum!=row.intent_checksum:raise HTTPException(status_code=409,detail="Intent checksum mismatch")
+    row.status="APPROVED_TRIAL_ONLY";row.approved_by=principal.username;row.approved_at=now;row.approval_checksum=canonical_checksum({"intent":row.intent_checksum,"approved_by":principal.username,"approved_at":now.isoformat()});db.add(DevelopmentActivity(actor=principal.username,action="controlled_trade_intent_approved",entity_type="controlled_trade_intent",entity_id=row.id,detail="Human approved immutable trial intent; executable=false; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row);return serialize_controlled_intent(row)
+
+@app.post("/api/controlled-live/intents/{intent_id}/reject")
+def reject_controlled_intent(intent_id:int,payload:ControlledIntentRejection,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(ControlledTradeIntent,intent_id)
+    if row is None:raise HTTPException(status_code=404,detail="Intent not found")
+    if row.status!="PROPOSED":raise HTTPException(status_code=409,detail="Intent is not awaiting review")
+    row.status="REJECTED";row.rejection_reason=payload.reason;db.add(DevelopmentActivity(actor=principal.username,action="controlled_trade_intent_rejected",entity_type="controlled_trade_intent",entity_id=row.id,detail="Human rejected trial intent; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row);return serialize_controlled_intent(row)

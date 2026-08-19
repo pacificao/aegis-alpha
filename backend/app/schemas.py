@@ -55,7 +55,7 @@ ParameterValue = bool | int | float | str | list[str]
 class ScenarioBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9 _.-]+$")
-    strategy_type: Literal["DIVIDEND_FARM", "CUSTOM_RESEARCH"]
+    strategy_type: Literal["DIVIDEND_FARM", "TREND_MOMENTUM", "MEAN_REVERSION", "QUALITY_VALUE", "VOLATILITY_BREAKOUT", "PAIRS_REVERSION", "CUSTOM_RESEARCH"]
     description: str = Field(default="", max_length=1000)
     lifecycle: Literal["RESEARCH", "PAUSED"] = "RESEARCH"
     parameters: dict[str, ParameterValue] = Field(default_factory=dict)
@@ -346,3 +346,18 @@ class IntelligenceReviewCreate(BaseModel):
 class PaperOrderCreate(BaseModel):
     model_config=ConfigDict(extra="forbid")
     risk_assessment_id:int=Field(gt=0);quote_record_id:int=Field(gt=0)
+
+
+class ControlledIntentCreate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    risk_assessment_id:int=Field(gt=0)
+    order_type:Literal["LIMIT"]="LIMIT"
+
+class ControlledIntentApproval(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    intent_checksum:str=Field(min_length=64,max_length=64)
+    confirmation:Literal["APPROVE CONTROLLED TRIAL"]
+
+class ControlledIntentRejection(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    reason:str=Field(min_length=10,max_length=500)
