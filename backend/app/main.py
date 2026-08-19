@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -26,13 +26,14 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, OperatorPreference, Phase, StrategyScenario, Task, TaskStatus
-from .schemas import DataIngestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, OperatorPreference, Phase, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import DataIngestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .seed import seed_roadmap
+from .strategy_engine import canonical_checksum, evaluate
 
 configure_logging()
 log = structlog.get_logger()
@@ -124,7 +125,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 3, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 4, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -335,3 +336,41 @@ def data_ingest(payload: DataIngestRequest, principal: Principal = Depends(csrf_
     except redis.RedisError: pass
     if run.status=="ERROR": raise HTTPException(status_code=503,detail=run.detail)
     return {"id":run.id,"provider":payload.provider,"dataset":run.dataset,"status":run.status,"accepted":run.accepted,"rejected":run.rejected,"detail":run.detail,"completed_at":run.completed_at,"trading":"DISABLED"}
+
+@app.get("/api/strategy-engine/scenarios/{scenario_id}/versions")
+def strategy_versions(scenario_id: int, _: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    if db.get(StrategyScenario,scenario_id) is None: raise HTTPException(status_code=404,detail="Scenario not found")
+    rows=db.scalars(select(StrategyVersion).where(StrategyVersion.scenario_id==scenario_id).order_by(StrategyVersion.version.desc())).all()
+    return [{"id":row.id,"scenario_id":row.scenario_id,"version":row.version,"specification":row.specification,"checksum":row.checksum,"created_by":row.created_by,"created_at":row.created_at,"trading":"DISABLED"} for row in rows]
+
+@app.post("/api/strategy-engine/scenarios/{scenario_id}/versions",status_code=201)
+def create_strategy_version(scenario_id: int,payload: StrategyVersionCreate,principal: Principal = Depends(csrf_protected),db: Session = Depends(get_db)):
+    scenario=db.get(StrategyScenario,scenario_id)
+    if scenario is None: raise HTTPException(status_code=404,detail="Scenario not found")
+    specification=payload.specification.model_dump(mode="json")
+    checksum=canonical_checksum(specification)
+    duplicate=db.scalar(select(StrategyVersion).where(StrategyVersion.scenario_id==scenario_id,StrategyVersion.checksum==checksum))
+    if duplicate is not None: raise HTTPException(status_code=409,detail=f"Identical immutable version already exists as v{duplicate.version}")
+    version=(db.scalar(select(func.max(StrategyVersion.version)).where(StrategyVersion.scenario_id==scenario_id)) or 0)+1
+    row=StrategyVersion(scenario_id=scenario_id,version=version,specification=specification,checksum=checksum,created_by=principal.username)
+    db.add(row); db.flush()
+    db.add(DevelopmentActivity(actor=principal.username,action="strategy_version_created",entity_type="strategy_version",entity_id=row.id,detail=f"Created immutable research specification v{version}; trading=DISABLED"))
+    db.commit(); db.refresh(row)
+    return {"id":row.id,"scenario_id":row.scenario_id,"version":row.version,"specification":row.specification,"checksum":row.checksum,"created_by":row.created_by,"created_at":row.created_at,"trading":"DISABLED"}
+
+@app.post("/api/strategy-engine/versions/{version_id}/evaluate",status_code=201)
+def evaluate_strategy_version(version_id: int,payload: StrategyEvaluationRequest,principal: Principal = Depends(csrf_protected),db: Session = Depends(get_db)):
+    version=db.get(StrategyVersion,version_id)
+    if version is None: raise HTTPException(status_code=404,detail="Strategy version not found")
+    result=evaluate(version.specification,payload.symbol,payload.facts,payload.as_of)
+    row=StrategyDecision(version_id=version.id,symbol=result["symbol"],as_of=result["as_of"],decision=result["decision"],reason_codes=result["reason_codes"],proposed_weight_pct=result["proposed_weight_pct"],inputs=result["inputs"])
+    db.add(row); db.flush()
+    db.add(DevelopmentActivity(actor=principal.username,action="strategy_research_evaluated",entity_type="strategy_decision",entity_id=row.id,detail=f"v{version.version} {row.symbol}={row.decision}; non-executable; trading=DISABLED"))
+    db.commit(); db.refresh(row)
+    return {"id":row.id,"version_id":version.id,**result}
+
+@app.get("/api/strategy-engine/versions/{version_id}/decisions")
+def strategy_decisions(version_id: int,limit: int=Query(default=50,ge=1,le=500),_: Principal = Depends(current_principal),db: Session = Depends(get_db)):
+    if db.get(StrategyVersion,version_id) is None: raise HTTPException(status_code=404,detail="Strategy version not found")
+    rows=db.scalars(select(StrategyDecision).where(StrategyDecision.version_id==version_id).order_by(StrategyDecision.created_at.desc()).limit(limit)).all()
+    return [{"id":row.id,"version_id":row.version_id,"symbol":row.symbol,"as_of":row.as_of,"decision":row.decision,"reason_codes":row.reason_codes,"proposed_weight_pct":row.proposed_weight_pct,"inputs":row.inputs,"risk_authorized":False,"executable":False,"trading":"DISABLED","created_at":row.created_at} for row in rows]
