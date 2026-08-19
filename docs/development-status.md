@@ -180,3 +180,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Phase 10 parameterized account-read hardening (2026-08-19)
 
 - The isolated gateway now derives only semantically known, bounded required arguments from official MCP schemas: a trailing 366-day date window for realized P&L and one read per symbol already present in the selected accounts equity-position dataset for tax lots. Unknown required arguments fail closed. Responses remain size-bounded, sanitized, read-only and trading-disabled. Gateway tests: 36/36 passed. Isolated production deployment and a clean selected-account resynchronization are still required before marking the roadmap task COMPLETE.
+
+
+## Phase 10 isolated execution adapter (2026-08-19)
+
+- Added official MCP schema diagnostics, exact review_equity_order mapping, and a separately gated place_equity_order adapter on the isolated gateway. BROKER_EXECUTION_ENABLED defaults false in code and deployment templates. Aegis production additionally rejects AEGIS_TRADING_ENABLED=true, so no live call is reachable in this release.
+- Added migration 0015 and an immutable intended/review/actual/fill reconciliation ledger. Exact fixtures validate matching orders and fail closed on field drift or overfills. Official pre-trade review requires a fresh checksummed intent plus exact human approval; its response is sanitized and cannot place an order.
+- Official Robinhood documentation identifies review_equity_order as simulation/pre-trade warnings and place_equity_order as real placement. Production execution remains disabled pending separate real-capital authorization and acceptance.

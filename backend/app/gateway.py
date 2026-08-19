@@ -30,6 +30,15 @@ class BrokerGatewayClient:
         """Fetch only the allowlisted pseudonymous brokerage account."""
         return self._request("POST", "/internal/account-snapshot", json={"selected_account_ref": selected_account_ref})
 
+    def tool_schema(self, tool: str) -> dict:
+        return self._request("GET", f"/internal/tool-schema/{tool}")
+
+    def execution_review(self, payload: dict) -> dict:
+        return self._request("POST", "/internal/execution/review", json=payload)
+
+    def execution_place(self, payload: dict) -> dict:
+        return self._request("POST", "/internal/execution/place", json=payload)
+
     def start_authorization(self) -> dict:
         return self._request("POST", "/internal/connect/start")
 
