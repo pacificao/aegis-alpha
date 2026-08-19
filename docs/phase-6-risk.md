@@ -7,3 +7,5 @@ Every assessment evaluates the global kill switch, circuit breaker, quantity, no
 Proposal identifiers and policy-plus-request checksums provide duplicate prevention and reproducibility. Identical requests return the persisted assessment; reuse of an identifier with changed content is rejected.
 
 `AUTHORIZED` means only that supplied frozen facts passed the policy. All responses remain `executable=false` and `trading=DISABLED`. Control mutations require authentication and CSRF and create audit activity. No broker credential or OAuth material enters this subsystem.
+
+Production acceptance completed on 2026-08-20 at version `0.5.0-risk` and migration `0009_phase6_aegis_risk`. CI and live checks verified deterministic authorization, fail-closed stale/duplicate/kill-switch behavior, persistence, authenticated boundaries, non-executability, and the absence of order or execution routes. PostgreSQL records Phase 6 as 14/14 COMPLETE.
