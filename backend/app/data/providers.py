@@ -50,12 +50,12 @@ class AlphaVantageProvider(HttpProvider):
         if error: raise ProviderError(str(error)[:300])
         return data
     def historical_daily(self, symbol: str) -> list[NormalizedItem]:
-        data=self.request("TIME_SERIES_DAILY_ADJUSTED",symbol=symbol,outputsize="full")
+        data=self.request("TIME_SERIES_DAILY",symbol=symbol,outputsize="compact")
         series=data.get("Time Series (Daily)")
         if not isinstance(series,dict): raise ProviderError("Daily series is missing")
         items=[]
         for day,row in series.items():
-            payload={"open":float(row["1. open"]),"high":float(row["2. high"]),"low":float(row["3. low"]),"close":float(row["4. close"]),"adjusted_close":float(row["5. adjusted close"]),"volume":int(row["6. volume"]),"dividend":float(row["7. dividend amount"]),"split_coefficient":float(row["8. split coefficient"])}
+            payload={"open":float(row["1. open"]),"high":float(row["2. high"]),"low":float(row["3. low"]),"close":float(row["4. close"]),"volume":int(row["5. volume"])}
             items.append(NormalizedItem("OHLCV",f"{symbol}:{day}",utc(day),"1d",payload,self.base_url))
         return items
     def quote(self, symbol: str) -> list[NormalizedItem]:

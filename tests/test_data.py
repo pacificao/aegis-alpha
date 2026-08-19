@@ -8,6 +8,7 @@ from app.data.calendar import market_session, sessions
 from app.data.providers import AlphaVantageProvider, FredProvider, ProviderError, SecEdgarProvider
 from app.data.quality import checksum, validate
 from app.main import app
+from app import main as main_module
 
 principal=Principal(username="test-operator",session_id="data-test",csrf_token="csrf")
 
@@ -15,10 +16,10 @@ def client_for(payload):
     def handler(request): return httpx.Response(200,json=payload,request=request)
     return httpx.Client(transport=httpx.MockTransport(handler))
 
-def test_alpha_vantage_normalizes_adjusted_daily_history():
-    payload={"Time Series (Daily)":{"2026-08-17":{"1. open":"100","2. high":"104","3. low":"99","4. close":"103","5. adjusted close":"102.5","6. volume":"12345","7. dividend amount":"0.25","8. split coefficient":"1.0"}}}
+def test_alpha_vantage_normalizes_daily_history():
+    payload={"Time Series (Daily)":{"2026-08-17":{"1. open":"100","2. high":"104","3. low":"99","4. close":"103","5. volume":"12345"}}}
     item=AlphaVantageProvider("fixture-key",client_for(payload)).historical_daily("AAPL")[0]
-    assert item.data_type=="OHLCV" and item.payload["dividend"]==0.25 and item.payload["volume"]==12345
+    assert item.data_type=="OHLCV" and item.payload["close"]==103 and item.payload["volume"]==12345
 
 def test_official_fred_and_sec_normalization():
     fred=FredProvider("fixture-key",client_for({"observations":[{"date":"2026-08-01","value":"4.2"}]})).observations("UNRATE")
@@ -44,7 +45,8 @@ def test_market_calendar_handles_weekends_and_holidays():
     assert market_session(date(2026,7,6))["is_open"] is True
     assert len(sessions(date(2026,8,17),date(2026,8,21)))==5
 
-def test_phase3_data_routes_are_authenticated_and_safe():
+def test_phase3_data_routes_are_authenticated_and_safe(monkeypatch):
+    monkeypatch.setattr(main_module.settings,"alpha_vantage_api_key","")
     with TestClient(app) as client:
         for route in ("/api/data/status","/api/data/records","/api/data/calendar?start=2026-08-17&end=2026-08-21"): assert client.get(route).status_code==401
     app.dependency_overrides[current_principal]=lambda:principal

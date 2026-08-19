@@ -30,7 +30,7 @@ Provider secrets are environment-only, never returned by APIs or accepted by the
 
 `ALPHA_VANTAGE_API_KEY` is required to run production market history, real-time quote, dividend, and news ingestion. Obtain it through Alpha Vantage's official API-key flow, store it only in the protected `.env`, and recreate the backend. `FRED_API_KEY` is optional because Aegis uses FRED's official CSV endpoint when absent.
 
-Until Alpha Vantage authorization is configured and actual production calls pass, its dependent roadmap tasks remain `WAITING_FOR_CREDENTIALS`; fixture normalization tests are not represented as live connectivity.
+Alpha Vantage authorization is configured only in the protected runtime environment. Live official production calls passed for standard daily OHLCV, quote, dividends, and news. The standard daily endpoint intentionally avoids the premium adjusted-history endpoint; dividend events remain a separately normalized feed.
 
 ## Official references
 
