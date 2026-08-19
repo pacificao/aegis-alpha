@@ -152,3 +152,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Exactly one pseudonymous brokerage account matched the dedicated approximately-$5 Agentic MCP account. Aegis now requires that selected keyed-HMAC reference for every synchronization; the gateway filters other accounts before account-specific reads, and the backend rejects multiple or mismatched accounts. No Robinhood account is modified or deleted.
 - Migration `0013_single_broker_account` records only the pseudonymous selection. The UI exposes only `SINGLE_ACCOUNT` or `NOT_SELECTED`, never the reference or account number. The prior multi-account Aegis snapshot was purged after the unique selection, and a clean selected-account resynchronization persisted exactly one matching account. Trading remains `DISABLED`.
 - Isolated-gateway deployment acceptance passed: status remained `READ_ONLY`/`DISABLED`; the gateway returned one account; the backend persisted one matching account and rejected scope drift by invariant. The single-account Phase 10 roadmap task is COMPLETE. Snapshot status remains `ATTENTION` solely for the separate planned parameterized tax-lot/realized-P&L reads.
+
+
+## Decision UI and storage maintenance (2026-08-19)
+
+- Dashboard now prioritizes operator posture, verified capital, governed decision queue, deterministic risk state, evidence-gated direction, and attention counts. Decorative filters and mixed-in Lab research metrics were removed; system/connection detail remains on targeted pages.
+- Portfolio now renders its existing verified summary: portfolio value, cash, buying power, and holdings. It continues to expose no account number or execution action. The global header now accurately identifies Phase 10 as active.
+- Deleted 4.738 GB of reproducible unused Docker build cache. Root filesystem usage fell from 97% (790 MB free) to 81% (4.5 GB free). Containers, images required by running services, volumes, PostgreSQL/Redis data, backups, credentials, and broker state were preserved.
