@@ -132,6 +132,19 @@ async def market_data(payload: MarketDataRequest):
         raise HTTPException(status_code=502, detail="Robinhood market-data request failed") from None
 
 
+@app.get("/internal/market-data/capabilities", dependencies=[Depends(internal_auth)])
+async def market_data_capabilities():
+    async def no_redirect(_: str) -> None: raise RuntimeError("Robinhood reauthorization is required")
+    async def no_callback() -> tuple[str, str | None]: raise RuntimeError("Robinhood reauthorization is required")
+    provider=OAuthClientProvider(server_url=MCP_URL,client_metadata=OAuthClientMetadata(client_name="Aegis Alpha Read-Only Gateway",redirect_uris=[AnyUrl(OAUTH_REDIRECT_URI)],grant_types=["authorization_code","refresh_token"],response_types=["code"],scope="internal"),storage=storage,redirect_handler=no_redirect,callback_handler=no_callback)
+    try:
+        async with httpx.AsyncClient(auth=provider,follow_redirects=True,timeout=30) as client:
+            async with streamable_http_client(MCP_URL,http_client=client) as (read,write,_):
+                async with ClientSession(read,write) as session:
+                    await session.initialize(); tools=await session.list_tools()
+                    return {"tools":[{"name":tool.name,"description":tool.description,"input_schema":tool.inputSchema} for tool in tools.tools if tool.name in MARKET_DATA_TOOLS],"trading":"DISABLED"}
+    except Exception: raise HTTPException(status_code=502,detail="Robinhood capability discovery failed") from None
+
 async def connect_and_validate() -> None:
     global _auth_url, _callback
 
