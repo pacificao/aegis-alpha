@@ -7,3 +7,5 @@ Every artifact requires HTTPS citations, evidence timestamps, explicit freshness
 The Strategy Council records independent reviews against the exact artifact checksum. Two independent approvals may make only `RESEARCH`, `HOLD`, or `ADJUST` artifacts eligible for deterministic RiskEngine review. Disagreement, missing reviews, stale/mismatched evidence, abstention, and all `BUY`, `SELL`, `PAUSE`, or `ESCALATE` recommendations require human review. Two rejections reject. This layer never sets `risk_authorized`, never produces an executable object, and has no broker or order dependency.
 
 The existing scheduled operator-email system remains the delivery layer for pre-market, post-market, and attention communications. Phase 7 artifacts provide cited, freshness-scored intelligence inputs; delivery failures cannot change governance state.
+
+Production acceptance completed on 2026-08-19 at version `0.6.0-intelligence` and migration `0010_phase7_intelligence`. Protected CI and live checks passed; PostgreSQL records Phase 7 as 14/14 COMPLETE. Intelligence remains non-risk-authorized and non-executable, and trading remains disabled.
