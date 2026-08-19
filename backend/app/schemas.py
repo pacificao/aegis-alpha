@@ -341,3 +341,7 @@ class IntelligenceArtifactCreate(BaseModel):
 class IntelligenceReviewCreate(BaseModel):
     model_config=ConfigDict(extra="forbid")
     reviewer:str=Field(min_length=3,max_length=80);verdict:Literal["APPROVE","REJECT","ABSTAIN"];confidence:float=Field(ge=0,le=1);rationale:str=Field(min_length=10,max_length=3000);evidence_checksum:str=Field(min_length=64,max_length=64,pattern=r"^[a-f0-9]{64}$")
+
+class PaperOrderCreate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    risk_assessment_id:int=Field(gt=0);quote_record_id:int=Field(gt=0)

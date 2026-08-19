@@ -82,3 +82,5 @@ The authenticated System page saves non-secret MCP metadata and initiates Robinh
 Phase 5 adds **Aegis Lab** under Performance: authenticated, checksummed, research-only portfolio backtesting with explicit frictions, corporate actions, benchmarks, robustness analysis, and inspectable trades. Lab results are not portfolio results and cannot trade.
 
 Phase 7 adds **Aegis Intelligence** under Suggested Adjustments. Provider-neutral AI clients and operators submit strictly bounded, cited artifacts; independent checksum-bound reviews produce fail-closed governance. Intelligence can only propose and never authorizes risk or executes.
+
+Phase 8 adds **Aegis Simulator** under Performance: fresh-data, risk-gated paper fills, isolated paper positions, and paper performance. The simulator has no broker dependency and cannot place live orders.

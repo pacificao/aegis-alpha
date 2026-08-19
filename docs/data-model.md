@@ -35,3 +35,10 @@ Uniqueness on provider, data type, and canonical checksum makes retries idempote
 
 - `intelligence_artifacts`: typed thesis, recommendation, confidence, cited evidence snapshot, structured counter-analysis, checksum, governance state, and permanent false risk-authorization flag.
 - `intelligence_reviews`: checksum-bound independent reviewer verdict, confidence, rationale, identity, and timestamp.
+
+## Phase 8 simulator
+
+- `paper_accounts`: isolated initial cash, cash, and realized P&L.
+- `paper_orders`: single-use RiskAssessment and quote provenance, intent, status, and audit identity.
+- `paper_fills`: deterministic price, quantity, commission, slippage, and time.
+- `paper_positions`: account/symbol quantity and average cost.
