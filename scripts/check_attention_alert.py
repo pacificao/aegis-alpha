@@ -22,7 +22,8 @@ def main():
     if previous is not None and previous!=current:
         failed=[name for name,value in status.items() if value!='HEALTHY']
         recovered=previous.get('healthy') is False and current['healthy'] is True
-        detail='RECOVERY: all monitored Aegis services are healthy.' if recovered else 'ACTION REQUIRED: '+', '.join(failed)+' failed its public health check.'
+        severity='CRITICAL' if 'Aegis application' in failed else 'HIGH'
+        detail='RECOVERY: all monitored Aegis services are healthy.' if recovered else severity+' ACTION REQUIRED: '+', '.join(failed)+' failed its public health check.'
         send('alert',config(),False,detail)
     temporary=STATE.with_suffix('.tmp')
     temporary.write_text(json.dumps(current,sort_keys=True)); temporary.replace(STATE)
