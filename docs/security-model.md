@@ -17,3 +17,5 @@ Staging uses separate credentials, database, Redis, hostname, and restricted syn
 API keys are runtime secrets and are never accepted by frontend forms, returned by APIs, written to audit details, or committed. Provider/dataset names are allowlisted; symbols, series IDs, CIKs, ranges, and result sizes are bounded. Source URLs exclude credentials. Provider failures are classified without logging response secrets.
 
 External content is untrusted research input. It is normalized and quality-checked but cannot authorize risk or execution. News text and provider metadata must never be interpreted as commands.
+
+- Risk authorization uses strict bounded schemas, immutable policy checksums, frozen request snapshots, duplicate detection, stale-data rejection, CSRF-protected control state, and complete audit evidence. It cannot access broker secrets or execute.

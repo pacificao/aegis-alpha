@@ -274,3 +274,42 @@ class LabBacktestRequest(BaseModel):
         if self.start_date>=self.end_date:raise ValueError("start_date must precede end_date")
         if (self.end_date-self.start_date).days>36525:raise ValueError("Backtest window exceeds 100 years")
         return self
+
+class RiskAssessmentRequest(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    proposal_id:str=Field(min_length=8,max_length=64,pattern=r"^[A-Za-z0-9._:-]+$")
+    strategy_decision_id:int|None=Field(default=None,gt=0)
+    symbol:str=Field(min_length=1,max_length=16,pattern=r"^[A-Za-z0-9.-]+$")
+    side:Literal["BUY","SELL"]
+    quantity:float=Field(gt=0,le=1_000_000_000);price:float=Field(gt=0,le=1_000_000);reference_price:float=Field(gt=0,le=1_000_000)
+    portfolio_value:float=Field(gt=0,le=1_000_000_000_000);buying_power:float=Field(ge=0,le=1_000_000_000_000)
+    current_position_value:float=Field(ge=0);total_exposure_value:float=Field(ge=0);sector_exposure_value:float=Field(ge=0);correlated_exposure_value:float=Field(ge=0)
+    daily_pnl_pct:float=Field(ge=-100,le=1000);drawdown_pct:float=Field(ge=0,le=100);annualized_volatility_pct:float=Field(ge=0,le=1000)
+    open_order_count:int=Field(ge=0,le=100000);market_data_as_of:datetime;proposal_created_at:datetime
+    @field_validator("symbol")
+    @classmethod
+    def normalize_risk_symbol(cls,value):return value.upper()
+    @field_validator("market_data_as_of","proposal_created_at")
+    @classmethod
+    def risk_timezones(cls,value):
+        if value.tzinfo is None:raise ValueError("Risk timestamps require timezone")
+        return value
+
+class RiskControlUpdate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    kill_switch_engaged:bool
+    circuit_breaker_engaged:bool
+    reason:str=Field(min_length=3,max_length=500)
+
+
+class RiskPolicyConfiguration(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    max_position_pct:float=Field(gt=0,le=100);max_portfolio_exposure_pct:float=Field(gt=0,le=200);max_sector_exposure_pct:float=Field(gt=0,le=100);max_correlated_exposure_pct:float=Field(gt=0,le=200)
+    max_daily_loss_pct:float=Field(gt=0,le=100);max_drawdown_pct:float=Field(gt=0,le=100);max_annualized_volatility_pct:float=Field(gt=0,le=1000);max_buying_power_use_pct:float=Field(gt=0,le=100)
+    max_order_notional:float=Field(gt=0,le=1_000_000_000);max_order_quantity:float=Field(gt=0,le=1_000_000_000);max_price_deviation_bps:float=Field(gt=0,le=10000)
+    max_open_orders:int=Field(gt=0,le=100000);max_market_data_age_seconds:int=Field(gt=0,le=86400);max_proposal_age_seconds:int=Field(gt=0,le=86400)
+
+class RiskPolicyCreate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    name:str=Field(min_length=3,max_length=120)
+    configuration:RiskPolicyConfiguration
