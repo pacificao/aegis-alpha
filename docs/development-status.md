@@ -175,3 +175,8 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Verified port-21 remediation (2026-08-19)
 
 - Nathan explicitly stopped and disabled vsftpd. Verification found the service disabled and inactive and no TCP/21 listener on IPv4 or IPv6. Public listeners are now limited to SSH 22 and Nginx 80/443; PostgreSQL, Redis, backend, frontend and broker gateway remain private. Phase 10 readiness derives this gate from the verified PostgreSQL roadmap task rather than claiming it from an unverified container assumption.
+
+
+## Phase 10 parameterized account-read hardening (2026-08-19)
+
+- The isolated gateway now derives only semantically known, bounded required arguments from official MCP schemas: a trailing 366-day date window for realized P&L and one read per symbol already present in the selected accounts equity-position dataset for tax lots. Unknown required arguments fail closed. Responses remain size-bounded, sanitized, read-only and trading-disabled. Gateway tests: 36/36 passed. Isolated production deployment and a clean selected-account resynchronization are still required before marking the roadmap task COMPLETE.
