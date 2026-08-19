@@ -8,7 +8,7 @@ The complete task-level roadmap is canonically defined in `backend/app/roadmap_d
 4. **Aegis Strategy Engine** — specification, universe, indicators, rules, sizing, schedules, filters, parameters, and versions.
 5. **Aegis Lab** — backtesting, market frictions/actions, benchmarks, robust validation, risk metrics, exposure, and trade inspection.
 6. **Aegis Risk** — deterministic engine, exposure/loss/drawdown/volatility limits, sanity and buying-power checks, deduplication, stale-data controls, breakers, and kill switch.
-7. **Aegis Intelligence** — AI-assisted creation/critique/research/review/detection, Strategy Council, cited pre-market intelligence, post-market highlights, and attention-alert classification. AI never bypasses RiskEngine.
+7. **Aegis Intelligence** — AI-assisted creation/critique/research/review/detection, Strategy Council, cited briefings, and independent proposal verification. Aegis/verifier agreement may advance only preauthorized low-risk proposals to deterministic RiskEngine review; disagreement, missing evidence, or verifier failure escalates to the human operator or fails closed. High-impact actions always require human approval. AI never bypasses RiskEngine.
 8. **Aegis Simulator** — live-data simulation, paper execution/fills/portfolio, isolation, and performance.
 9. **Aegis Gateway** — broker abstraction, Robinhood Agentic/MCP, synchronization, orders/fills/reconciliation, failure handling, audit, and safeguards.
 10. **Aegis Controlled Live** — real capital with per-order human approval and intent/fill/state/risk validation.
