@@ -1,8 +1,8 @@
 # Development Status
 
-- Current phase: Phase 4 — Aegis Strategy Engine
-- Current version: `0.2.0-console`
-- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE
+- Current phase: Phase 5 — Aegis Lab
+- Current version: `0.4.0-lab`
+- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -99,8 +99,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Roadmap delivery/next-phase summaries derive from PostgreSQL state instead of hard-coded phase numbers. The UI shows Phase 4 complete, Phase 5 next, and trading disabled without fabricating performance.
 - Frontend ESLint passed with 0 errors and one existing navigation warning; Vitest 1/1 and the production build/TypeScript passed.
 
-## Phase 5 implementation — awaiting production acceptance
+## Phase 5 — COMPLETE (verified 2026-08-19)
 
 - Aegis Lab implements day-by-day portfolio backtesting with occupied capital, bounded allocation, transaction costs, spread/slippage, dividends, splits, same-window benchmarks, walk-forward, seeded Monte Carlo, 36-variant parameter sensitivity, drawdown, Sharpe, Sortino, exposure, capital utilization, and trade inspection.
 - Immutable Phase 4 strategy versions and checksummed Phase 3 records define reproducible run identity. Benchmark-only symbols cannot become strategy positions. All artifacts remain non-executable, risk-unauthorized, and trading-disabled.
 - Authenticated Lab APIs and the Performance → Aegis Lab UI expose readiness, configuration, results, provenance, robustness, and trades. Performance and Dashboard show the latest Lab evidence separately from unavailable real portfolio performance.
+- Production acceptance passed on migration `0008_phase5_aegis_lab` and version `0.4.0-lab`: all six containers were healthy, HTTPS `/lab` returned 200, unauthenticated Lab API access returned 401, and persisted run #1 used 100 checksummed SPY bars plus one corporate action to produce one inspectable trade and 36 sensitivity variants. The artifact reports `risk_authorized=false`, `executable=false`, and `trading=DISABLED`.
+- Verification results: backend pytest 24/24 passed; frontend Vitest 1/1 passed; production build passed; Compose validation passed; GitHub backend/frontend/gateway/Compose/secret checks passed through feature, develop, and main promotion. Production acceptance found and corrected a missing browser payload default before closure.
