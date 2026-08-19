@@ -6,7 +6,7 @@ import secrets
 import asyncio
 import os
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -324,6 +324,32 @@ def _sanitize(value: object, key: str="") -> object:
     if value is not None and ("account" in lower or lower in {"id","order_id","position_id","instrument_id","url"}):return _opaque(value)
     return value
 
+def _symbols(value:object)->list[str]:
+    found:set[str]=set()
+    def visit(item:object)->None:
+        if isinstance(item,dict):
+            for key,child in item.items():
+                if key.lower() in {"symbol","ticker"} and isinstance(child,str) and 0<len(child)<=16:found.add(child.upper())
+                else:visit(child)
+        elif isinstance(item,list):
+            for child in item:visit(child)
+    visit(value);return sorted(found)[:100]
+
+def _argument_sets(name:str,schema:dict,account_number:str,datasets:dict,observed:datetime)->list[dict]|None:
+    """Build only bounded, semantically known arguments; unknown requirements fail closed."""
+    required=schema.get("required",[]);properties=schema.get("properties",{});base={}
+    for candidate in ("account_number","account_id"):
+        if candidate in properties:base[candidate]=account_number;break
+    start=(observed-timedelta(days=366)).date().isoformat();end=observed.date().isoformat()
+    for key in required:
+        if key in base:continue
+        if key in {"start_date","start_time","from_date"}:base[key]=start
+        elif key in {"end_date","end_time","to_date"}:base[key]=end
+        elif key in {"symbol","ticker"}:
+            symbols=_symbols(datasets.get("get_equity_positions",{}));return [{**base,key:symbol} for symbol in symbols]
+        else:return None
+    return [base]
+
 async def _account_snapshot_session(session: ClientSession,selected_account_ref:str) -> dict:
     advertised={tool.name:tool for tool in (await session.list_tools()).tools}
     account_result=await call_read_only_tool(session,"get_accounts",{})
@@ -337,19 +363,18 @@ async def _account_snapshot_session(session: ClientSession,selected_account_ref:
         for name in ACCOUNT_SNAPSHOT_TOOLS:
             tool=advertised.get(name)
             if tool is None:continue
-            schema=tool.inputSchema or {};required=schema.get("required",[]);properties=schema.get("properties",{})
-            args={}
-            for candidate in ("account_number","account_id"):
-                if candidate in properties:args[candidate]=number;break
-            if any(item not in args for item in required):
+            schema=tool.inputSchema or {};argument_sets=_argument_sets(name,schema,number,datasets,datetime.now(UTC))
+            if argument_sets is None:
                 failures.append({"tool":name,"code":"UNSUPPORTED_REQUIRED_ARGUMENT"});continue
             try:
-                result=await call_read_only_tool(session,name,args)
-                if result.isError:failures.append({"tool":name,"code":"READ_FAILED"})
-                else:
-                    safe=_sanitize(tool_payload(result))
-                    if len(json.dumps(safe,separators=(",",":"),default=str))>1_000_000:failures.append({"tool":name,"code":"RESPONSE_TOO_LARGE"})
-                    else:datasets[name]=safe
+                collected=[]
+                for args in argument_sets:
+                    result=await call_read_only_tool(session,name,args)
+                    if result.isError:raise RuntimeError("Read failed")
+                    collected.append(_sanitize(tool_payload(result)))
+                safe=collected[0] if len(collected)==1 else collected
+                if len(json.dumps(safe,separators=(",",":"),default=str))>1_000_000:failures.append({"tool":name,"code":"RESPONSE_TOO_LARGE"})
+                else:datasets[name]=safe
             except Exception:failures.append({"tool":name,"code":"READ_FAILED"})
         output.append({"account_ref":_opaque(number),"datasets":datasets,"failures":failures})
     if not output:raise RuntimeError("No readable brokerage accounts")

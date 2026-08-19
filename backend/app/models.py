@@ -271,3 +271,14 @@ class BrokerSyncRun(Base):
     detail:Mapped[str]=mapped_column(Text,default="")
     started_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
     completed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+
+
+class ControlledTradeIntent(Base):
+    __tablename__="controlled_trade_intents"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    risk_assessment_id:Mapped[int]=mapped_column(ForeignKey("risk_assessments.id",ondelete="RESTRICT"),unique=True,index=True)
+    strategy_decision_id:Mapped[int]=mapped_column(ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),index=True)
+    symbol:Mapped[str]=mapped_column(String(32),index=True);side:Mapped[str]=mapped_column(String(4));quantity:Mapped[float]=mapped_column(Float);order_type:Mapped[str]=mapped_column(String(12));limit_price:Mapped[float]=mapped_column(Float)
+    status:Mapped[str]=mapped_column(String(24),index=True);intent_checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True);intent_snapshot:Mapped[dict]=mapped_column(JSON)
+    expires_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),index=True);approved_by:Mapped[str|None]=mapped_column(String(64),nullable=True);approved_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True);approval_checksum:Mapped[str|None]=mapped_column(String(64),nullable=True);rejection_reason:Mapped[str]=mapped_column(Text,default="")
+    created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)

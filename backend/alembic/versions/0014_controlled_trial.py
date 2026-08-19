@@ -1,0 +1,8 @@
+"""controlled live trial intent and approval ledger"""
+from alembic import op
+import sqlalchemy as sa
+revision="0014_controlled_trial";down_revision="0013_single_broker_account";branch_labels=None;depends_on=None
+def upgrade():
+    op.create_table("controlled_trade_intents",sa.Column("id",sa.Integer(),primary_key=True),sa.Column("risk_assessment_id",sa.Integer(),sa.ForeignKey("risk_assessments.id",ondelete="RESTRICT"),nullable=False,unique=True),sa.Column("strategy_decision_id",sa.Integer(),sa.ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),nullable=False),sa.Column("symbol",sa.String(32),nullable=False),sa.Column("side",sa.String(4),nullable=False),sa.Column("quantity",sa.Float(),nullable=False),sa.Column("order_type",sa.String(12),nullable=False),sa.Column("limit_price",sa.Float(),nullable=False),sa.Column("status",sa.String(24),nullable=False),sa.Column("intent_checksum",sa.String(64),nullable=False,unique=True),sa.Column("intent_snapshot",sa.JSON(),nullable=False),sa.Column("expires_at",sa.DateTime(timezone=True),nullable=False),sa.Column("approved_by",sa.String(64),nullable=True),sa.Column("approved_at",sa.DateTime(timezone=True),nullable=True),sa.Column("approval_checksum",sa.String(64),nullable=True),sa.Column("rejection_reason",sa.Text(),nullable=False,server_default=""),sa.Column("created_by",sa.String(64),nullable=False),sa.Column("created_at",sa.DateTime(timezone=True),nullable=False,server_default=sa.func.now()))
+    for c in ("risk_assessment_id","strategy_decision_id","symbol","status","intent_checksum","expires_at","created_at"):op.create_index(f"ix_controlled_trade_intents_{c}","controlled_trade_intents",[c])
+def downgrade():op.drop_table("controlled_trade_intents")

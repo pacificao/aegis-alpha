@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import UTC,datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from ..models import DevelopmentActivity,RiskAssessment,RiskControlState,RiskPolicy
+from ..models import DevelopmentActivity,RiskAssessment,RiskControlState,RiskPolicy,StrategyDecision,StrategyVersion
 from ..strategy_engine import canonical_checksum
 from .engine import evaluate
 
@@ -14,16 +14,28 @@ def ensure_defaults(db:Session):
     if db.get(RiskControlState,1) is None:db.add(RiskControlState(id=1,kill_switch_engaged=False,circuit_breaker_engaged=False,reason="Phase 6 initialized; execution absent; trading disabled",updated_by="system"))
     db.commit()
 
+def effective_policy(db:Session,configuration:dict,strategy_decision_id:int|None)->dict:
+    """A strategy may tighten, but can never loosen, the active global policy."""
+    effective=dict(configuration)
+    if strategy_decision_id is None:return effective
+    decision=db.get(StrategyDecision,strategy_decision_id);version=db.get(StrategyVersion,decision.version_id) if decision else None
+    if version is None:return effective
+    spec=version.specification or {};sizing=spec.get("position_sizing",{});parameters=spec.get("parameters",{})
+    limits={"max_position_pct":sizing.get("max_position_pct",parameters.get("max_position_pct")),"max_portfolio_exposure_pct":sizing.get("max_strategy_allocation_pct",parameters.get("max_allocation_pct")),"max_drawdown_pct":parameters.get("max_drawdown_pct"),"max_daily_loss_pct":parameters.get("max_daily_loss_pct")}
+    for key,value in limits.items():
+        if isinstance(value,(int,float)) and value>=0:effective[key]=min(float(effective[key]),float(value))
+    return effective
+
 def assess(db:Session,payload,actor:str,now:datetime|None=None):
     policy=db.scalar(select(RiskPolicy).where(RiskPolicy.active.is_(True)).order_by(RiskPolicy.version.desc()));controls=db.get(RiskControlState,1)
     if policy is None or controls is None:raise ValueError("Risk controls are not initialized")
-    request=payload.model_dump(mode="python");identity=canonical_checksum({"policy":policy.checksum,"proposal":payload.model_dump(mode="json")})
+    request=payload.model_dump(mode="python");configuration=effective_policy(db,policy.configuration,payload.strategy_decision_id);identity=canonical_checksum({"policy":canonical_checksum(configuration),"proposal":payload.model_dump(mode="json")})
     existing=db.scalar(select(RiskAssessment).where(RiskAssessment.request_checksum==identity))
     if existing:return existing
     duplicate=db.scalar(select(RiskAssessment).where(RiskAssessment.proposal_id==payload.proposal_id))
     if duplicate:
         result={"outcome":"REJECTED","reason_codes":["DUPLICATE_PROPOSAL"],"checks":[{"code":"DUPLICATE_PROPOSAL","passed":False,"actual":payload.proposal_id,"limit":"unique","detail":"Proposal identifier was already evaluated"}],"notional":payload.quantity*payload.price,"risk_authorized":False}
-    else:result=evaluate(policy.configuration,request,{"kill_switch_engaged":controls.kill_switch_engaged,"circuit_breaker_engaged":controls.circuit_breaker_engaged},now)
+    else:result=evaluate(configuration,request,{"kill_switch_engaged":controls.kill_switch_engaged,"circuit_breaker_engaged":controls.circuit_breaker_engaged},now)
     breaker_codes={"DAILY_LOSS","DRAWDOWN","VOLATILITY"}.intersection(result["reason_codes"])
     if breaker_codes:
         controls.circuit_breaker_engaged=True;controls.reason=f"Automatic breaker: {chr(44).join(sorted(breaker_codes))}";controls.updated_by="risk-engine"
