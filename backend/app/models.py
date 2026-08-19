@@ -282,3 +282,20 @@ class ControlledTradeIntent(Base):
     status:Mapped[str]=mapped_column(String(24),index=True);intent_checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True);intent_snapshot:Mapped[dict]=mapped_column(JSON)
     expires_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),index=True);approved_by:Mapped[str|None]=mapped_column(String(64),nullable=True);approved_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True);approval_checksum:Mapped[str|None]=mapped_column(String(64),nullable=True);rejection_reason:Mapped[str]=mapped_column(Text,default="")
     created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+
+
+class ControlledExecutionRecord(Base):
+    __tablename__="controlled_execution_records"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    intent_id:Mapped[int]=mapped_column(ForeignKey("controlled_trade_intents.id",ondelete="RESTRICT"),unique=True,index=True)
+    environment:Mapped[str]=mapped_column(String(24),default="CONTROLLED_LIVE",index=True)
+    status:Mapped[str]=mapped_column(String(24),index=True)
+    intended_snapshot:Mapped[dict]=mapped_column(JSON)
+    review_snapshot:Mapped[dict]=mapped_column(JSON,default=dict)
+    actual_order:Mapped[dict]=mapped_column(JSON,default=dict)
+    fills:Mapped[list]=mapped_column(JSON,default=list)
+    reconciliation:Mapped[dict]=mapped_column(JSON,default=dict)
+    review_checksum:Mapped[str|None]=mapped_column(String(64),nullable=True,index=True)
+    actual_checksum:Mapped[str|None]=mapped_column(String(64),nullable=True,index=True)
+    created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+    updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())

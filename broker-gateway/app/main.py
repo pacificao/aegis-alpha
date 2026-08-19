@@ -7,6 +7,7 @@ import asyncio
 import os
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -28,6 +29,7 @@ CALLBACK_URL = f"{OAUTH_CALLBACK_BASE_URL}/api/broker/robinhood/oauth/callback"
 OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI", CALLBACK_URL)
 SHARED_SECRET = os.environ.get("BROKER_GATEWAY_SHARED_SECRET", "")
 AUTHORIZATION_ENABLED = os.environ.get("BROKER_AUTHORIZATION_ENABLED", "false").lower() == "true"
+EXECUTION_ENABLED = os.environ.get("BROKER_EXECUTION_ENABLED", "false").lower() == "true"
 if not AEGIS_UI_URL.startswith("https://") or not OAUTH_CALLBACK_BASE_URL.startswith("https://"):
     raise RuntimeError("Aegis UI and OAuth callback URLs must use HTTPS")
 if len(SHARED_SECRET) < 32:
@@ -60,12 +62,12 @@ def public_state() -> dict:
     status = _state["status"]
     if status == "NOT_CONFIGURED" and storage.configured():
         status = "DISCONNECTED"
-    return {**_state, "status": status, "trading": "DISABLED", "mode": "READ_ONLY", "authorization_enabled": AUTHORIZATION_ENABLED}
+    return {**_state, "status": status, "trading": "DISABLED", "mode": "READ_ONLY", "authorization_enabled": AUTHORIZATION_ENABLED, "execution_adapter_deployed": True, "execution_enabled": EXECUTION_ENABLED}
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "trading": "DISABLED"}
+    return {"status": "ok", "trading": "DISABLED", "execution_adapter_deployed": True, "execution_enabled": EXECUTION_ENABLED}
 
 
 @app.get("/internal/status", dependencies=[Depends(internal_auth)])
@@ -402,3 +404,76 @@ async def account_snapshot(payload: AccountSnapshotRequest):
                     return snapshot
     except Exception:
         raise HTTPException(status_code=502,detail="Robinhood read-only account synchronization failed") from None
+
+
+# Phase 10 explicit execution boundary. Review is non-ordering; placement is hard-disabled by default.
+_EXECUTION_TOOLS=frozenset({"review_equity_order","place_equity_order"})
+class ExecutionRequest(BaseModel):
+    selected_account_ref:str=Field(pattern=r"^ref_[0-9a-f]{24}$")
+    symbol:str=Field(pattern=r"^[A-Z]{1,6}$")
+    side:Literal["BUY","SELL"]
+    quantity:float=Field(gt=0,le=10000)
+    order_type:Literal["LIMIT"]="LIMIT"
+    limit_price:float=Field(gt=0,le=1000000)
+    time_in_force:Literal["GFD"]="GFD"
+    intent_checksum:str=Field(min_length=64,max_length=64)
+    approval_checksum:str=Field(min_length=64,max_length=64)
+
+def _schema_summary(schema:dict)->dict:
+    properties=schema.get("properties",{})
+    return {"required":[str(x)[:40] for x in schema.get("required",[])[:20]],"properties":{str(k)[:40]:{"type":v.get("type"),"format":v.get("format"),"enum":v.get("enum",[])[:20] if isinstance(v.get("enum"),list) else None} for k,v in list(properties.items())[:40] if isinstance(v,dict)}}
+
+def _execution_arguments(schema:dict,number:str,payload:ExecutionRequest)->dict|None:
+    values={"account_number":number,"account_id":number,"symbol":payload.symbol,"ticker":payload.symbol,"side":payload.side.lower(),"quantity":payload.quantity,"order_type":"limit","type":"limit","limit_price":payload.limit_price,"price":payload.limit_price,"time_in_force":payload.time_in_force.lower(),"tif":payload.time_in_force.lower()}
+    required=schema.get("required",[]);properties=schema.get("properties",{});args={}
+    for key in properties:
+        if key in values:args[key]=values[key]
+    if any(key not in args for key in required):return None
+    return args
+
+async def _with_official_session(operation):
+    async def no_redirect(_:str)->None:raise RuntimeError("Robinhood reauthorization is required")
+    async def no_callback()->tuple[str,str|None]:raise RuntimeError("Robinhood reauthorization is required")
+    provider=OAuthClientProvider(server_url=MCP_URL,client_metadata=OAuthClientMetadata(client_name="Aegis Alpha Controlled Gateway",redirect_uris=[AnyUrl(OAUTH_REDIRECT_URI)],grant_types=["authorization_code","refresh_token"],response_types=["code"],scope="internal"),storage=storage,redirect_handler=no_redirect,callback_handler=no_callback)
+    async with httpx.AsyncClient(auth=provider,follow_redirects=True,timeout=30) as client:
+        async with streamable_http_client(MCP_URL,http_client=client) as (read,write,_):
+            async with ClientSession(read,write) as session:
+                await session.initialize();return await operation(session)
+
+@app.get("/internal/tool-schema/{tool_name}",dependencies=[Depends(internal_auth)])
+async def tool_schema(tool_name:str):
+    if tool_name not in set(ACCOUNT_SNAPSHOT_TOOLS)|_EXECUTION_TOOLS:raise HTTPException(status_code=403,detail="Tool schema is outside approved broker boundary")
+    async def inspect(session):
+        advertised={tool.name:tool for tool in (await session.list_tools()).tools};tool=advertised.get(tool_name)
+        if tool is None:raise HTTPException(status_code=404,detail="Official tool is not advertised")
+        return {"tool":tool_name,"schema":_schema_summary(tool.inputSchema or {}),"execution_enabled":False,"trading":"DISABLED"}
+    return await _with_official_session(inspect)
+
+@app.post("/internal/execution/review",dependencies=[Depends(internal_auth)])
+async def execution_review(payload:ExecutionRequest):
+    async def review(session):
+        advertised={tool.name:tool for tool in (await session.list_tools()).tools};tool=advertised.get("review_equity_order")
+        if tool is None:raise HTTPException(status_code=409,detail="Official review tool unavailable")
+        accounts=_records(tool_payload(await call_read_only_tool(session,"get_accounts",{})));number=next((_account_number(a) for a in accounts if _account_number(a) and secrets.compare_digest(_opaque(_account_number(a)),payload.selected_account_ref)),None)
+        if not number:raise HTTPException(status_code=409,detail="Selected account unavailable")
+        args=_execution_arguments(tool.inputSchema or {},number,payload)
+        if args is None:raise HTTPException(status_code=409,detail="Official review schema is unsupported")
+        result=await session.call_tool("review_equity_order",args)
+        if result.isError:raise HTTPException(status_code=409,detail="Official order review rejected")
+        safe=_sanitize(tool_payload(result));return {"status":"REVIEWED","review":safe,"intent_checksum":payload.intent_checksum,"broker_called":True,"order_placed":False,"trading":"DISABLED"}
+    return await _with_official_session(review)
+
+@app.post("/internal/execution/place",dependencies=[Depends(internal_auth)])
+async def execution_place(payload:ExecutionRequest):
+    if not EXECUTION_ENABLED:raise HTTPException(status_code=403,detail="Broker execution is disabled")
+    async def place(session):
+        advertised={tool.name:tool for tool in (await session.list_tools()).tools};tool=advertised.get("place_equity_order")
+        if tool is None:raise HTTPException(status_code=409,detail="Official placement tool unavailable")
+        accounts=_records(tool_payload(await call_read_only_tool(session,"get_accounts",{})));number=next((_account_number(a) for a in accounts if _account_number(a) and secrets.compare_digest(_opaque(_account_number(a)),payload.selected_account_ref)),None)
+        if not number:raise HTTPException(status_code=409,detail="Selected account unavailable")
+        args=_execution_arguments(tool.inputSchema or {},number,payload)
+        if args is None:raise HTTPException(status_code=409,detail="Official placement schema is unsupported")
+        result=await session.call_tool("place_equity_order",args)
+        if result.isError:raise HTTPException(status_code=409,detail="Official order placement rejected")
+        safe=_sanitize(tool_payload(result));return {"status":"SUBMITTED","actual_order":safe,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"order_placed":True,"trading":"ENABLED"}
+    return await _with_official_session(place)
