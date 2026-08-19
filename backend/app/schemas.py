@@ -45,6 +45,7 @@ class RobinhoodConfigOut(BaseModel):
     endpoint: str
     mode: str
     status: str = "NOT_CONFIGURED"
+    account_scope: str = "NOT_SELECTED"
     updated_at: datetime
 
 

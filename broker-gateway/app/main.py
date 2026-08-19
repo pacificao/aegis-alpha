@@ -324,7 +324,7 @@ def _sanitize(value: object, key: str="") -> object:
     if value is not None and ("account" in lower or lower in {"id","order_id","position_id","instrument_id","url"}):return _opaque(value)
     return value
 
-async def _account_snapshot_session(session: ClientSession) -> dict:
+async def _account_snapshot_session(session: ClientSession,selected_account_ref:str) -> dict:
     advertised={tool.name:tool for tool in (await session.list_tools()).tools}
     account_result=await call_read_only_tool(session,"get_accounts",{})
     if account_result.isError:raise RuntimeError("Account read failed")
@@ -332,7 +332,7 @@ async def _account_snapshot_session(session: ClientSession) -> dict:
     output=[]
     for account in accounts:
         number=_account_number(account)
-        if not number:continue
+        if not number or not secrets.compare_digest(_opaque(number),selected_account_ref):continue
         datasets={};failures=[]
         for name in ACCOUNT_SNAPSHOT_TOOLS:
             tool=advertised.get(name)
@@ -359,8 +359,11 @@ async def _account_snapshot_session(session: ClientSession) -> dict:
             elif required not in account["datasets"] and not any(x["tool"]==required for x in account["failures"]):account["failures"].append({"tool":required,"code":"READ_FAILED"})
     return {"status":"COMPLETE","provider":"robinhood","observed_at":datetime.now(UTC).isoformat(),"accounts":output,"trading":"DISABLED","mode":"READ_ONLY"}
 
+class AccountSnapshotRequest(BaseModel):
+    selected_account_ref: str = Field(pattern=r"^ref_[0-9a-f]{24}$")
+
 @app.post("/internal/account-snapshot",dependencies=[Depends(internal_auth)])
-async def account_snapshot():
+async def account_snapshot(payload: AccountSnapshotRequest):
     async def no_redirect(_:str)->None:raise RuntimeError("Robinhood reauthorization is required")
     async def no_callback()->tuple[str,str|None]:raise RuntimeError("Robinhood reauthorization is required")
     provider=OAuthClientProvider(server_url=MCP_URL,client_metadata=OAuthClientMetadata(client_name="Aegis Alpha Read-Only Gateway",redirect_uris=[AnyUrl(OAUTH_REDIRECT_URI)],grant_types=["authorization_code","refresh_token"],response_types=["code"],scope="internal"),storage=storage,redirect_handler=no_redirect,callback_handler=no_callback)
@@ -369,7 +372,7 @@ async def account_snapshot():
             async with streamable_http_client(MCP_URL,http_client=client) as (read,write,_):
                 async with ClientSession(read,write) as session:
                     await session.initialize()
-                    snapshot=await _account_snapshot_session(session)
+                    snapshot=await _account_snapshot_session(session,payload.selected_account_ref)
                     _state.update(status="CONNECTED",detail="Official MCP read-only account snapshot verified",last_sync_at=snapshot["observed_at"])
                     return snapshot
     except Exception:

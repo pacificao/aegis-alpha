@@ -187,7 +187,7 @@ def robinhood_config(_: Principal = Depends(current_principal), db: Session = De
     config = db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider == "robinhood"))
     if config is None:
         raise HTTPException(status_code=503, detail="Robinhood configuration is not initialized")
-    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": BrokerGatewayClient(settings).status()["status"]})
+    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": BrokerGatewayClient(settings).status()["status"],"account_scope":"SINGLE_ACCOUNT" if config.selected_account_ref else "NOT_SELECTED"})
 
 
 @app.patch("/api/broker/robinhood/config", response_model=RobinhoodConfigOut)
@@ -200,7 +200,7 @@ def update_robinhood_config(payload: RobinhoodConfigUpdate, principal: Principal
     db.add(DevelopmentActivity(actor=principal.username, action="broker_config_updated", entity_type="broker_connection_config", entity_id=config.id, detail="Updated non-secret Robinhood MCP metadata; mode=READ_ONLY"))
     db.commit()
     db.refresh(config)
-    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": BrokerGatewayClient(settings).status()["status"]})
+    return RobinhoodConfigOut.model_validate(config).model_copy(update={"status": BrokerGatewayClient(settings).status()["status"],"account_scope":"SINGLE_ACCOUNT" if config.selected_account_ref else "NOT_SELECTED"})
 
 
 @app.post("/api/broker/robinhood/connect")
@@ -238,10 +238,12 @@ def portfolio(_: Principal = Depends(current_principal), db: Session = Depends(g
 
 @app.post("/api/broker/robinhood/sync")
 def broker_sync(principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"))
+    if config is None or not config.selected_account_ref:raise HTTPException(status_code=409,detail="Select the single authorized brokerage account before synchronization")
     connection=BrokerGatewayClient(settings).status().get("status")
     if connection not in {"CONNECTED","DISCONNECTED"}:
         raise HTTPException(status_code=409, detail="Robinhood read-only authorization is not available")
-    run=synchronize_broker(db,BrokerGatewayClient(settings),principal.username)
+    run=synchronize_broker(db,BrokerGatewayClient(settings),principal.username,config.selected_account_ref)
     if run.status == "FAILED":raise HTTPException(status_code=502,detail="Read-only broker synchronization failed safely")
     return {"id":run.id,"status":run.status,"attempts":run.attempts,"snapshot_id":run.snapshot_id,"trading":"DISABLED","executable":False}
 
