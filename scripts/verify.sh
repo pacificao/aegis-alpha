@@ -14,5 +14,5 @@ fi
 if ss -ltn | grep -E ':(3000|5432|6379|8000)[[:space:]]'; then
   echo "Internal service port unexpectedly exposed" >&2; exit 1
 fi
-docker compose run --rm -e PYTHONPATH=/app --entrypoint pytest backend -q /app/tests
+docker run --rm --entrypoint pytest -e PYTHONPATH=/app -v "$PWD:/repo:ro" -w /tmp aegis-alpha-backend -q /repo/tests
 docker run --rm -v "$PWD/frontend:/app" -w /app node:22.14-alpine npm test -- --run
