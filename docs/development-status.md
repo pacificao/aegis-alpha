@@ -158,4 +158,6 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - Dashboard now prioritizes operator posture, verified capital, governed decision queue, deterministic risk state, evidence-gated direction, and attention counts. Decorative filters and mixed-in Lab research metrics were removed; system/connection detail remains on targeted pages.
 - Portfolio now renders its existing verified summary: portfolio value, cash, buying power, and holdings. It continues to expose no account number or execution action. The global header now accurately identifies Phase 10 as active.
-- Deleted 4.738 GB of reproducible unused Docker build cache. Root filesystem usage fell from 97% (790 MB free) to 81% (4.5 GB free). Containers, images required by running services, volumes, PostgreSQL/Redis data, backups, credentials, and broker state were preserved.
+- Deleted 4.738 GB of reproducible unused Docker build cache and 2.793 GB of images unused by every container. Root filesystem usage fell from 97% (790 MB free) to 37% (15 GB free). Containers, all six active service images, volumes, PostgreSQL/Redis data, backups, credentials, and broker state were preserved.
+
+- Deployment acceptance: all six containers healthy; HTTPS login returned 200; protected Portfolio returned 401 unauthenticated; backend health reported trading `DISABLED`. Only 22, 80, 443 and the pre-existing Phase 10-tracked port 21 listen publicly; internal application and data ports remain private.
