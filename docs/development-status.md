@@ -2,7 +2,7 @@
 
 - Current phase: Phase 8 — Aegis Simulator
 - Current version: `0.7.0-simulator`
-- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE; Phase 7 14/14 COMPLETE
+- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE; Phase 7 14/14 COMPLETE; Phase 8 6/6 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -129,8 +129,11 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Live acceptance verified cited artifact persistence, two-reviewer low-impact consensus, stale-evidence failure, high-impact human escalation, HTTPS UI 200, unauthenticated API 401, no order/execution routes, and `risk_authorized=false`, `executable=false`, `trading=DISABLED`.
 - PostgreSQL records all 14 Phase 7 tasks COMPLETE. Phase 8 is next.
 
-## Phase 8 implementation — awaiting production acceptance
+## Phase 8 — COMPLETE (verified 2026-08-19)
 
 - Independent paper accounts, single-use risk-authorized orders, fresh normalized quote validation, deterministic fills, positions, realized/unrealized P&L, equity, return, audit history, authenticated APIs, and Simulator UI are implemented.
 - Five-basis-point adverse slippage and $1 commission make friction explicit. Stale data, price deviation, insufficient cash/positions, duplicate authorization use, and missing RiskEngine authorization fail closed.
 - The paper module has no broker/gateway/Robinhood dependency. All outputs identify PAPER, broker-called false, live execution unavailable, and trading disabled.
+- Protected-main CI passed backend, frontend, gateway, Compose, and secret checks. Production migration `0011_phase8_simulator` applied with all six containers healthy.
+- Live acceptance ingested a fresh official Alpha Vantage SPY quote, obtained deterministic RiskEngine authorization, persisted a paper fill and marked position with explicit friction, rejected duplicate use, confirmed no broker call or non-paper order route, and kept trading disabled.
+- PostgreSQL records all 6 Phase 8 tasks COMPLETE. Phase 9 is next.
