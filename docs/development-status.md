@@ -81,3 +81,11 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Provider responsibilities and the complete safe-use roadmap are recorded in `docs/robinhood-capabilities.md`. Alpha Vantage remains required for reproducible deep adjusted backfill and independent research validation.
 - Production validation discovered 14 safe schemas. Thirteen public tools were exercised successfully: equity quotes, fundamentals, historicals, technical indicators, financials, earnings results/calendar, price book, indexes/quotes, option chains/instruments/quotes/historicals. Account-number-dependent tradability was intentionally not called. Nine representative datasets were persisted with `COMPLETE`, one accepted record, and zero rejects each.
 - Robinhood did not advertise crypto tools during validation, so crypto remains unavailable rather than assumed. Trading remained `DISABLED` in every gateway response; no review, order, cancellation, watchlist, scanner mutation, or other state-changing tool was exposed or called.
+
+## Verified 2026-08-18 — Phase 4 strategy engine
+
+- Added schema-validated deterministic specifications covering universe, indicators, entry/exit rules, position sizing, NYSE schedules, filters, parameters, and immutable checksummed versions.
+- Research evaluation deterministically emits ENTRY, EXIT, HOLD, or EXCLUDE with reason codes and exact input facts. Decisions persist for audit and are unconditionally `risk_authorized=false`, `executable=false`, and `trading=DISABLED`.
+- Strategy Engine UI supports adjustable scenario parameters, universe configuration, immutable version creation, and operator-supplied decision previews. It explicitly does not backtest, simulate, authorize risk, or execute.
+- Migration `0007_phase4_strategy_engine` adds strategy versions and decision history. ADR 0005 records the immutable boundary.
+- Backend pytest: 19/19 passed. Frontend ESLint: 0 errors, 1 existing navigation warning. Vitest: 1/1 passed. Production build and TypeScript passed.

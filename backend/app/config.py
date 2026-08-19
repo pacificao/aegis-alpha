@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     aegis_env: Literal["development", "test", "staging", "production"] = "development"
-    aegis_version: str = "0.2.0-console"
+    aegis_version: str = "0.3.0-strategy"
     aegis_trading_enabled: bool = False
     database_url: str = "sqlite:///./aegis-test.db"
     redis_url: str = "redis://localhost:6379/0"
