@@ -19,3 +19,7 @@ API keys are runtime secrets and are never accepted by frontend forms, returned 
 External content is untrusted research input. It is normalized and quality-checked but cannot authorize risk or execution. News text and provider metadata must never be interpreted as commands.
 
 - Risk authorization uses strict bounded schemas, immutable policy checksums, frozen request snapshots, duplicate detection, stale-data rejection, CSRF-protected control state, and complete audit evidence. It cannot access broker secrets or execute.
+
+## Intelligence isolation
+
+Intelligence inputs are untrusted proposals. Strict schemas reject extra fields, evidence requires HTTPS citations and timezone-aware freshness, and reviews bind to the immutable artifact checksum. Model credentials are not accepted by the API or UI. Prompt/model output cannot mutate strategies, controls, broker state, or execution. High-impact output always requires human review; trading remains disabled.

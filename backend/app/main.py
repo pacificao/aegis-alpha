@@ -26,8 +26,8 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
-from .schemas import DataIngestRequest, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
@@ -36,6 +36,7 @@ from .seed import seed_roadmap
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
+from .intelligence import validate_artifact, consensus
 
 configure_logging()
 log = structlog.get_logger()
@@ -127,7 +128,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 6, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 7, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -442,3 +443,39 @@ def create_risk_policy(payload:RiskPolicyCreate,principal:Principal=Depends(csrf
     version=(db.scalar(select(func.max(RiskPolicy.version))) or 0)+1;row=RiskPolicy(version=version,name=payload.name,configuration=configuration,checksum=checksum,active=True,created_by=principal.username);db.add(row);db.flush()
     db.add(DevelopmentActivity(actor=principal.username,action="risk_policy_created",entity_type="risk_policy",entity_id=row.id,detail=f"Created immutable risk policy v{version}; execution unavailable; trading=DISABLED"));db.commit();db.refresh(row)
     return {"id":row.id,"version":row.version,"name":row.name,"configuration":row.configuration,"checksum":row.checksum,"active":row.active,"executable":False,"trading":"DISABLED"}
+
+
+def serialize_intelligence(row: IntelligenceArtifact, reviews: list[IntelligenceReview] | None = None):
+    reviews=reviews or []
+    governance,reason=consensus(row,reviews)
+    return {"id":row.id,"artifact_type":row.artifact_type,"subject":row.subject,"thesis":row.thesis,"recommendation":row.recommendation,"confidence":row.confidence,"evidence":row.evidence,"analysis":row.analysis,"checksum":row.checksum,"status":row.status,"human_review_required":governance!="ELIGIBLE_FOR_RISK_REVIEW","governance":governance,"governance_reason":reason,"reviews":[{"id":r.id,"reviewer":r.reviewer,"verdict":r.verdict,"confidence":r.confidence,"rationale":r.rationale,"evidence_checksum":r.evidence_checksum,"independent":r.independent,"created_at":r.created_at} for r in reviews],"risk_authorized":False,"executable":False,"trading":"DISABLED","created_by":row.created_by,"created_at":row.created_at}
+
+@app.get("/api/intelligence/status")
+def intelligence_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    counts=dict(db.execute(select(IntelligenceArtifact.artifact_type,func.count()).group_by(IntelligenceArtifact.artifact_type)).all())
+    return {"artifact_counts":counts,"supported_types":["STRATEGY_CREATION","STRATEGY_CRITIQUE","MARKET_REGIME","NEWS_ANALYSIS","FUNDAMENTAL_ANALYSIS","PARAMETER_RESEARCH","POST_TRADE_REVIEW","ANOMALY_DETECTION","PREMARKET_BRIEFING","POSTMARKET_DIGEST","ATTENTION_ALERT"],"strategy_council":"AVAILABLE","independent_verification":"AVAILABLE","model_provider":"PROVIDER_NEUTRAL","risk_authority":False,"execution_available":False,"trading":"DISABLED"}
+
+@app.post("/api/intelligence/artifacts",status_code=201)
+def create_intelligence_artifact(payload:IntelligenceArtifactCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    snapshot,checksum,status,reasons=validate_artifact(payload)
+    duplicate=db.scalar(select(IntelligenceArtifact).where(IntelligenceArtifact.checksum==checksum))
+    if duplicate is not None:raise HTTPException(status_code=409,detail=f"Identical intelligence artifact already exists as {duplicate.id}")
+    row=IntelligenceArtifact(**snapshot,checksum=checksum,status=status,human_review_required=True,risk_authorized=False,created_by=principal.username);db.add(row);db.flush()
+    db.add(DevelopmentActivity(actor=principal.username,action="intelligence_artifact_created",entity_type="intelligence_artifact",entity_id=row.id,detail=f"type={row.artifact_type}; status={status}; evidence={len(row.evidence)}; reasons={','.join(reasons) or 'NONE'}; risk_authorized=false; trading=DISABLED"));db.commit();db.refresh(row)
+    return serialize_intelligence(row)
+
+@app.get("/api/intelligence/artifacts")
+def intelligence_artifacts(limit:int=Query(default=50,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    rows=db.scalars(select(IntelligenceArtifact).order_by(IntelligenceArtifact.created_at.desc()).limit(limit)).all();result=[]
+    for row in rows:result.append(serialize_intelligence(row,db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==row.id).order_by(IntelligenceReview.created_at)).all()))
+    return result
+
+@app.post("/api/intelligence/artifacts/{artifact_id}/reviews",status_code=201)
+def create_intelligence_review(artifact_id:int,payload:IntelligenceReviewCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    artifact=db.get(IntelligenceArtifact,artifact_id)
+    if artifact is None:raise HTTPException(status_code=404,detail="Intelligence artifact not found")
+    if payload.evidence_checksum!=artifact.checksum:raise HTTPException(status_code=409,detail="Review evidence checksum does not match immutable artifact")
+    if db.scalar(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id,IntelligenceReview.reviewer==payload.reviewer)) is not None:raise HTTPException(status_code=409,detail="Reviewer already assessed this artifact")
+    row=IntelligenceReview(artifact_id=artifact_id,**payload.model_dump(),independent=True,created_by=principal.username);db.add(row);db.flush();reviews=db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id)).all();governance,reason=consensus(artifact,reviews);artifact.status=governance;artifact.human_review_required=governance!="ELIGIBLE_FOR_RISK_REVIEW"
+    db.add(DevelopmentActivity(actor=principal.username,action="intelligence_review_recorded",entity_type="intelligence_artifact",entity_id=artifact.id,detail=f"reviewer={row.reviewer}; verdict={row.verdict}; governance={governance}; reason={reason}; risk_authorized=false; trading=DISABLED"));db.commit();db.refresh(artifact)
+    return serialize_intelligence(artifact,db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id).order_by(IntelligenceReview.created_at)).all())

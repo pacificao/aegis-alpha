@@ -2,7 +2,7 @@
 
 > **Publicly visible, proprietary software — not open source.** Viewing this repository grants no right to use, copy, modify, deploy, distribute, commercialize, or create derivative works. See [LICENSE](LICENSE).
 
-A private, auditable AI-assisted quantitative-investment platform. Phase 2 supplies an authenticated responsive operator console, portfolio-boundary status, persisted research scenarios, settings, activity history, FastAPI, PostgreSQL, Redis, and Nginx. Trading is hard-disabled.
+A private, auditable AI-assisted quantitative-investment platform. Phase 7 adds cited, checksummed intelligence artifacts, independent Strategy Council reviews, deterministic fail-closed consensus, and an authenticated workbench. AI remains proposal-only; deterministic RiskEngine authorization is separate and trading is hard-disabled.
 
 ## Prerequisites (Ubuntu 24.04)
 
@@ -80,3 +80,5 @@ The canonical endpoint is `https://aegis-alpha.pacificao.com`. HTTP and direct-I
 The authenticated System page saves non-secret MCP metadata and initiates Robinhood’s official browser/OAuth flow through the isolated Aegis broker gateway. Never enter a Robinhood password or token into Aegis, and never authorize brokerage access on the AI-administered development host.
 
 Phase 5 adds **Aegis Lab** under Performance: authenticated, checksummed, research-only portfolio backtesting with explicit frictions, corporate actions, benchmarks, robustness analysis, and inspectable trades. Lab results are not portfolio results and cannot trade.
+
+Phase 7 adds **Aegis Intelligence** under Suggested Adjustments. Provider-neutral AI clients and operators submit strictly bounded, cited artifacts; independent checksum-bound reviews produce fail-closed governance. Intelligence can only propose and never authorizes risk or executes.
