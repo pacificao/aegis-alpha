@@ -188,3 +188,25 @@ class LabTrade(Base):
     shares:Mapped[float]=mapped_column(Float);entry_price:Mapped[float]=mapped_column(Float);exit_price:Mapped[float]=mapped_column(Float)
     dividends:Mapped[float]=mapped_column(Float);costs:Mapped[float]=mapped_column(Float);pnl:Mapped[float]=mapped_column(Float);return_pct:Mapped[float]=mapped_column(Float)
     holding_days:Mapped[int]=mapped_column(Integer);exit_reason:Mapped[str]=mapped_column(String(32));max_drawdown_pct:Mapped[float]=mapped_column(Float)
+
+class RiskPolicy(Base):
+    __tablename__="risk_policies"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    version:Mapped[int]=mapped_column(Integer,unique=True,index=True)
+    name:Mapped[str]=mapped_column(String(120));configuration:Mapped[dict]=mapped_column(JSON);checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True)
+    active:Mapped[bool]=mapped_column(Boolean,default=False,index=True);created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now())
+
+class RiskControlState(Base):
+    __tablename__="risk_control_state"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    kill_switch_engaged:Mapped[bool]=mapped_column(Boolean,default=False);circuit_breaker_engaged:Mapped[bool]=mapped_column(Boolean,default=False)
+    reason:Mapped[str]=mapped_column(Text,default="");updated_by:Mapped[str]=mapped_column(String(64));updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
+
+class RiskAssessment(Base):
+    __tablename__="risk_assessments"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    policy_id:Mapped[int]=mapped_column(ForeignKey("risk_policies.id",ondelete="RESTRICT"),index=True)
+    proposal_id:Mapped[str]=mapped_column(String(64),index=True);strategy_decision_id:Mapped[int|None]=mapped_column(ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),nullable=True,index=True)
+    request_checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True);request_snapshot:Mapped[dict]=mapped_column(JSON)
+    outcome:Mapped[str]=mapped_column(String(20),index=True);reason_codes:Mapped[list]=mapped_column(JSON);checks:Mapped[list]=mapped_column(JSON);notional:Mapped[float]=mapped_column(Float);risk_authorized:Mapped[bool]=mapped_column(Boolean,index=True)
+    created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)

@@ -21,3 +21,8 @@ The data layer cannot call RiskEngine or execution. Provider replacement is isol
 ## Phase 5 research boundary
 
 Aegis Lab depends inward on immutable Strategy Engine versions and trusted Data records. Its deterministic simulator produces persisted research artifacts and has no dependency on `BrokerGatewayClient`, RiskEngine, paper execution, or live execution. Lab evidence may inform later proposals but cannot authorize or execute them.
+
+
+## Phase 6 risk boundary
+
+Strategy proposals enter a pure deterministic RiskEngine with an immutable policy and frozen portfolio/market snapshot. It persists every check and reason code. Risk has no broker or execution dependency; authorization remains non-executable while trading is disabled. Kill switch, circuit breaker, duplicates, stale evidence, and missing facts fail closed.
