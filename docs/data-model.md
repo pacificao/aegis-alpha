@@ -19,3 +19,7 @@
 - `data_quality_issues`: immutable severity/code/detail findings linked to normalized records.
 
 Uniqueness on provider, data type, and canonical checksum makes retries idempotent. Provider payloads remain JSON so source evolution does not force execution-layer coupling; normalized identifiers and timestamps remain queryable columns.
+
+## Phase 5 research artifacts
+
+`lab_runs` binds an immutable strategy version to the complete backtest configuration and Phase 3 record checksums. It stores metrics, equity curve, walk-forward, Monte Carlo, sensitivity, provenance, status, actor, and timestamp. `(strategy_version_id, configuration_checksum)` is unique. `lab_trades` stores inspectable simulated trade ledger rows and cascades only when its owning Lab run is removed. Lab records contain no broker credential, order, approval, or execution state.

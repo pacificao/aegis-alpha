@@ -98,3 +98,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Dashboard and Performance now read live Phase 3 readiness counts while clearly reserving backtest metrics for Phase 5, paper results for Phase 8, and verified broker portfolio metrics for Phase 9.
 - Roadmap delivery/next-phase summaries derive from PostgreSQL state instead of hard-coded phase numbers. The UI shows Phase 4 complete, Phase 5 next, and trading disabled without fabricating performance.
 - Frontend ESLint passed with 0 errors and one existing navigation warning; Vitest 1/1 and the production build/TypeScript passed.
+
+## Phase 5 implementation — awaiting production acceptance
+
+- Aegis Lab implements day-by-day portfolio backtesting with occupied capital, bounded allocation, transaction costs, spread/slippage, dividends, splits, same-window benchmarks, walk-forward, seeded Monte Carlo, 36-variant parameter sensitivity, drawdown, Sharpe, Sortino, exposure, capital utilization, and trade inspection.
+- Immutable Phase 4 strategy versions and checksummed Phase 3 records define reproducible run identity. Benchmark-only symbols cannot become strategy positions. All artifacts remain non-executable, risk-unauthorized, and trading-disabled.
+- Authenticated Lab APIs and the Performance → Aegis Lab UI expose readiness, configuration, results, provenance, robustness, and trades. Performance and Dashboard show the latest Lab evidence separately from unavailable real portfolio performance.

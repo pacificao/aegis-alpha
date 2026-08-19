@@ -17,3 +17,7 @@ See `data-model.md`, `security-model.md`, and ADRs in `decisions/`.
 Official provider → allowlisted adapter → normalization → deterministic quality checks → PostgreSQL → bounded Redis cache → authenticated research APIs/UI.
 
 The data layer cannot call RiskEngine or execution. Provider replacement is isolated behind adapters. UTC is authoritative; NYSE and Pacific headquarters time are explicit edge concerns. See `decisions/0004-data-provider-boundary.md`.
+
+## Phase 5 research boundary
+
+Aegis Lab depends inward on immutable Strategy Engine versions and trusted Data records. Its deterministic simulator produces persisted research artifacts and has no dependency on `BrokerGatewayClient`, RiskEngine, paper execution, or live execution. Lab evidence may inform later proposals but cannot authorize or execute them.

@@ -1,7 +1,7 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Float, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Float, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -160,3 +160,31 @@ class StrategyDecision(Base):
     proposed_weight_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     inputs: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class LabRun(Base):
+    __tablename__="lab_runs"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    strategy_version_id:Mapped[int]=mapped_column(ForeignKey("strategy_versions.id",ondelete="RESTRICT"),index=True)
+    status:Mapped[str]=mapped_column(String(20),index=True)
+    configuration:Mapped[dict]=mapped_column(JSON)
+    configuration_checksum:Mapped[str]=mapped_column(String(64),index=True)
+    metrics:Mapped[dict]=mapped_column(JSON)
+    equity_curve:Mapped[list]=mapped_column(JSON)
+    walk_forward:Mapped[dict]=mapped_column(JSON)
+    monte_carlo:Mapped[dict]=mapped_column(JSON)
+    sensitivity:Mapped[list]=mapped_column(JSON)
+    data_provenance:Mapped[dict]=mapped_column(JSON)
+    detail:Mapped[str]=mapped_column(Text,default="")
+    created_by:Mapped[str]=mapped_column(String(64))
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
+
+class LabTrade(Base):
+    __tablename__="lab_trades"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    run_id:Mapped[int]=mapped_column(ForeignKey("lab_runs.id",ondelete="CASCADE"),index=True)
+    symbol:Mapped[str]=mapped_column(String(32),index=True)
+    entry_day:Mapped[date]=mapped_column(Date)
+    exit_day:Mapped[date]=mapped_column(Date)
+    shares:Mapped[float]=mapped_column(Float);entry_price:Mapped[float]=mapped_column(Float);exit_price:Mapped[float]=mapped_column(Float)
+    dividends:Mapped[float]=mapped_column(Float);costs:Mapped[float]=mapped_column(Float);pnl:Mapped[float]=mapped_column(Float);return_pct:Mapped[float]=mapped_column(Float)
+    holding_days:Mapped[int]=mapped_column(Integer);exit_reason:Mapped[str]=mapped_column(String(32));max_drawdown_pct:Mapped[float]=mapped_column(Float)
