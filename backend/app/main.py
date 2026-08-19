@@ -584,6 +584,10 @@ def review_controlled_intent(intent_id:int,principal:Principal=Depends(csrf_prot
     row=db.get(ControlledTradeIntent,intent_id)
     if row is None:raise HTTPException(status_code=404,detail="Intent not found")
     if row.status!="APPROVED_TRIAL_ONLY" or not row.approval_checksum:raise HTTPException(status_code=409,detail="Exact human approval is required")
+    now=datetime.now(UTC);expires=row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=UTC)
+    if now>=expires:
+        row.status="EXPIRED";db.add(DevelopmentActivity(actor=principal.username,action="controlled_trade_intent_expired",entity_type="controlled_trade_intent",entity_id=row.id,detail="Approved intent expired before official broker review; broker_called=false; trading=DISABLED"));db.commit()
+        raise HTTPException(status_code=409,detail="Intent expired before broker review")
     config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"))
     if config is None or not config.selected_account_ref:raise HTTPException(status_code=409,detail="Selected account unavailable")
     payload={"selected_account_ref":config.selected_account_ref,"symbol":row.symbol,"side":row.side,"quantity":row.quantity,"order_type":row.order_type,"limit_price":row.limit_price,"time_in_force":"GFD","intent_checksum":row.intent_checksum,"approval_checksum":row.approval_checksum}
