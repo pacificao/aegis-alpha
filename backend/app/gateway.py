@@ -20,6 +20,9 @@ class BrokerGatewayClient:
     def status(self) -> dict:
         return self._request("GET", "/internal/status")
 
+    def market_data_capabilities(self) -> dict:
+        return self._request("GET", "/internal/market-data/capabilities")
+
     def market_data(self, tool: str, arguments: dict) -> dict:
         return self._request("POST", "/internal/market-data", json={"tool": tool, "arguments": arguments})
 
