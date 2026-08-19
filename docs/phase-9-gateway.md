@@ -20,4 +20,4 @@ The Portfolio page shows freshness, checksum, balances/holdings, historical orde
 
 ## Deployment and acceptance
 
-The isolated broker Droplet must be updated from reviewed `main` by the human operator. This preserves the rule that development AI cannot administer the OAuth domain. Acceptance requires: remote gateway health, new internal account-snapshot route, successful authenticated read-only sync, persisted redacted snapshot, matched/explicit-attention reconciliation, authenticated UI rendering, unauthenticated rejection, all tests/CI, and confirmation that trading and all mutation surfaces remain absent.
+Completed 2026-08-19. The human operator deployed reviewed `main` to the isolated broker Droplet. Five accounts passed core read-only synchronization; immutable persistence, keyed-HMAC pseudonymization, order/fill reconciliation, authenticated UI, unauthenticated rejection, protected CI, service recreation, and absence of mutation surfaces were verified. Optional parameter-dependent tax-lot and realized-P&L reads remain explicit warnings rather than unsafe guesses. Trading remains disabled.
