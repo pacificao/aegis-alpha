@@ -11,3 +11,9 @@
 - Trading is disabled by configuration and absence of execution endpoints.
 
 Staging uses separate credentials, database, Redis, hostname, and restricted synthetic/paper data. Production uses an encrypted managed secret store or root-readable deployment-time secret files, never image build arguments, plus DigitalOcean secret injection, encrypted backups, least-privilege service identities, TLS, and a separate execution security domain. Brokerage credentials will live only in that domain.
+
+## Market-data security
+
+API keys are runtime secrets and are never accepted by frontend forms, returned by APIs, written to audit details, or committed. Provider/dataset names are allowlisted; symbols, series IDs, CIKs, ranges, and result sizes are bounded. Source URLs exclude credentials. Provider failures are classified without logging response secrets.
+
+External content is untrusted research input. It is normalized and quality-checked but cannot authorize risk or execution. News text and provider metadata must never be interpreted as commands.

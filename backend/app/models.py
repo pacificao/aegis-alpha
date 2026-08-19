@@ -77,3 +77,64 @@ class OperatorPreference(Base):
     page_size: Mapped[int] = mapped_column(Integer, default=20)
     confirm_sensitive_actions: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class DataProvider(Base):
+    __tablename__ = "data_providers"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    provider_type: Mapped[str] = mapped_column(String(40))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    credential_status: Mapped[str] = mapped_column(String(30), default="NOT_REQUIRED")
+    base_url: Mapped[str] = mapped_column(String(255))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class Instrument(Base):
+    __tablename__ = "instruments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    asset_type: Mapped[str] = mapped_column(String(30), default="EQUITY")
+    exchange: Mapped[str] = mapped_column(String(30), default="")
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    cik: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+class DataRecord(Base):
+    __tablename__ = "data_records"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider_id: Mapped[int] = mapped_column(ForeignKey("data_providers.id", ondelete="RESTRICT"), index=True)
+    instrument_id: Mapped[int | None] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"), nullable=True, index=True)
+    data_type: Mapped[str] = mapped_column(String(40), index=True)
+    external_id: Mapped[str] = mapped_column(String(255), default="")
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    interval: Mapped[str] = mapped_column(String(20), default="")
+    payload: Mapped[dict] = mapped_column(JSON)
+    source_url: Mapped[str] = mapped_column(String(500))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    quality_status: Mapped[str] = mapped_column(String(20), default="VALID")
+    checksum: Mapped[str] = mapped_column(String(64), index=True)
+
+class IngestionRun(Base):
+    __tablename__ = "ingestion_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider_id: Mapped[int] = mapped_column(ForeignKey("data_providers.id", ondelete="RESTRICT"), index=True)
+    dataset: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted: Mapped[int] = mapped_column(Integer, default=0)
+    rejected: Mapped[int] = mapped_column(Integer, default=0)
+    detail: Mapped[str] = mapped_column(Text, default="")
+
+class DataQualityIssue(Base):
+    __tablename__ = "data_quality_issues"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    record_id: Mapped[int | None] = mapped_column(ForeignKey("data_records.id", ondelete="CASCADE"), nullable=True, index=True)
+    severity: Mapped[str] = mapped_column(String(20), index=True)
+    code: Mapped[str] = mapped_column(String(60), index=True)
+    detail: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

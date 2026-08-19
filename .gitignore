@@ -41,7 +41,7 @@ known_hosts
 backups/
 postgres-data/
 redis-data/
-data/
+/data/
 *.sock
 *.pid
 

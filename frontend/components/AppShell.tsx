@@ -20,6 +20,7 @@ const groups=[
   {label:"System",icon:Server,items:[
     ["/system","System status"],
     ["/activity","Activity log"],
+    ["/data","Data sources"],
     ["/roadmap","Development roadmap"],
     ["/security","Security"],
     ["/settings","Settings"],
