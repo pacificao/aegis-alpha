@@ -1,8 +1,8 @@
 # Development Status
 
-- Current phase: Phase 5 — Aegis Lab
-- Current version: `0.4.0-lab`
-- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE
+- Current phase: Phase 6 — Aegis Risk
+- Current version: `0.5.0-risk`
+- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -112,7 +112,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Phase 7 now includes independent proposal verification. Aegis supplies a checksummed proposal and evidence snapshot; a credential-isolated verifier returns an independently auditable assessment. Agreement can only advance a preauthorized low-risk proposal to the deterministic RiskEngine. Disagreement, missing evidence, stale evidence, or verifier failure requires human review or fails closed; both rejection results in rejection. High-impact actions always require human approval, and no AI component may authorize risk or execute.
 
 
-## Phase 6 implementation — awaiting production acceptance
+## Phase 6 — COMPLETE (verified 2026-08-20)
 
 - Deterministic Aegis Risk evaluates immutable policy limits for position, portfolio, sector, correlation, loss, drawdown, volatility, buying power, order sanity, duplicates, freshness, circuit breaker, and kill switch.
 - Authenticated APIs and the Risk UI expose policy, controls, proposal evaluation, and the immutable assessment ledger. Every authorization remains non-executable and trading-disabled.
+- Protected-main CI passed backend, frontend, gateway, Compose, and secret checks. Production migration `0009_phase6_aegis_risk` applied and all six containers reported healthy.
+- Live acceptance verified an authorized-but-non-executable proposal, checksum idempotency, changed-content duplicate rejection, stale-data rejection, kill-switch rejection and safe reset, HTTPS `/risk` 200, unauthenticated API 401, and the absence of order/execution routes. Trading remained `DISABLED`.
+- PostgreSQL roadmap state records all 14 Phase 6 tasks COMPLETE with a development activity audit entry. Phase 7 is next.
