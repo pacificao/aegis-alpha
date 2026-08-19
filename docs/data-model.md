@@ -3,7 +3,7 @@
 - `phases`: stable phase number, name, description, status metadata.
 - `tasks`: phase relationship, stable ordinal, title, status (`NOT_STARTED`, `IN_PROGRESS`, `COMPLETE`, `BLOCKED`, `WAITING_FOR_CREDENTIALS`), notes, timestamps.
 - `development_activity`: actor, action, entity reference, safe structured detail, timestamp.
-- `broker_connection_config`: provider-unique, non-secret operator metadata: display name, the allowlisted official endpoint, read-only mode, and update timestamp. Credentials, OAuth tokens, account numbers, and private keys are prohibited.
+- `broker_connection_config`: provider-unique, non-secret operator metadata: display name, the allowlisted official endpoint, read-only mode, one keyed-HMAC `selected_account_ref`, and update timestamp. Credentials, OAuth tokens, account numbers, and private keys are prohibited.
 - `strategy_scenarios`: unique name, research strategy type, description, Phase 2 lifecycle (`RESEARCH` or `PAUSED`), bounded JSON parameters, and timestamps. Live/paper states are rejected at both API and database layers.
 - `operator_preferences`: operator-unique display density, bounded page size, mandatory sensitive-action confirmation, and update timestamp.
 - Alembic owns schema evolution. Roadmap definitions are idempotently seeded; mutable status and notes persist in PostgreSQL.
@@ -48,4 +48,4 @@ Uniqueness on provider, data type, and canonical checksum makes retries idempote
 - `broker_snapshots`: immutable provider, status, hashed account references, normalized balance/holding/order/fill projections, reconciliation evidence, source time, checksum, and actor. No credential or full account number is permitted.
 - `broker_sync_runs`: append-only status, bounded read-attempt count, safe error code/detail, snapshot reference, and timing.
 
-Retries are idempotent by canonical snapshot checksum. Historical broker orders/fills are observations only and cannot be submitted, edited, cancelled, or converted to executable objects.
+Retries are idempotent by canonical snapshot checksum. Historical broker orders/fills are observations only and cannot be submitted, edited, cancelled, or converted to executable objects. Phase 10 scopes every synchronization request to exactly one operator-selected pseudonymous account; the gateway filters before any account-specific tool call and the backend independently rejects multiple or mismatched account references.

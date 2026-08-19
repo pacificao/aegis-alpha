@@ -36,7 +36,7 @@ def normalize(payload:dict)->dict:
     observed=datetime.fromisoformat(str(payload["observed_at"]).replace("Z","+00:00"))
     if observed.tzinfo is None:raise ValueError("NAIVE_OBSERVED_TIME")
     accounts=payload.get("accounts")
-    if not isinstance(accounts,list) or not accounts or len(accounts)>20:raise ValueError("INVALID_ACCOUNT_SET")
+    if not isinstance(accounts,list) or len(accounts)!=1:raise ValueError("SINGLE_ACCOUNT_SCOPE_REQUIRED")
     refs=[];balances=[];holdings=[];orders=[];fills=[];failures=[]
     for account in accounts:
         ref=account.get("account_ref","")
@@ -65,16 +65,18 @@ def normalize(payload:dict)->dict:
     normalized["checksum"]=hashlib.sha256(_canonical({**normalized,"source_observed_at":observed.isoformat()}).encode()).hexdigest()
     return normalized
 
-def synchronize(db:Session,client:BrokerGatewayClient,actor:str,max_attempts:int=3)->BrokerSyncRun:
+def synchronize(db:Session,client:BrokerGatewayClient,actor:str,selected_account_ref:str,max_attempts:int=3)->BrokerSyncRun:
+    if not selected_account_ref.startswith("ref_") or len(selected_account_ref)!=28:raise ValueError("INVALID_ACCOUNT_SCOPE")
     run=BrokerSyncRun(provider="robinhood",status="RUNNING",attempts=0,error_code="",detail="Read-only synchronization started")
     db.add(run);db.flush()
     payload=None
     for attempt in range(1,max_attempts+1):
-        run.attempts=attempt;payload=client.account_snapshot()
+        run.attempts=attempt;payload=client.account_snapshot(selected_account_ref)
         if payload.get("status")!="ERROR":break
         if attempt<max_attempts:time.sleep(0.05*(2**(attempt-1)))
     try:
         normalized=normalize(payload or {})
+        if normalized["account_refs"] != [selected_account_ref]:raise ValueError("ACCOUNT_SCOPE_MISMATCH")
         snapshot=db.scalar(select(BrokerSnapshot).where(BrokerSnapshot.checksum==normalized["checksum"]))
         if snapshot is None:
             snapshot=BrokerSnapshot(**normalized,created_by=actor);db.add(snapshot);db.flush()

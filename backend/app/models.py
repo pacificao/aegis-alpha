@@ -54,6 +54,7 @@ class BrokerConnectionConfig(Base):
     connection_name: Mapped[str] = mapped_column(String(80))
     endpoint: Mapped[str] = mapped_column(String(255))
     mode: Mapped[str] = mapped_column(String(20), default="READ_ONLY")
+    selected_account_ref: Mapped[str | None] = mapped_column(String(32), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

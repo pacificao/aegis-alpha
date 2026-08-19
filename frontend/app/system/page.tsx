@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 import { api } from "@/lib/api";
 
 type System = {application:string;backend_version:string;environment:string;postgresql:string;redis:string;uptime_seconds:number;server_time:string;trading:string};
-type RobinhoodConfig = {connection_name:string;endpoint:string;mode:string;status:string;updated_at:string};
+type RobinhoodConfig = {connection_name:string;endpoint:string;mode:string;status:string;account_scope:string;updated_at:string};
 type BrokerStatus = {status:string;detail:string;mode:string;trading:string;authorization_enabled:boolean;last_sync_at?:string|null;allowed_tools?:number;blocked_tools?:number};
 const OFFICIAL_ENDPOINT = "https://agent.robinhood.com/mcp/trading";
 
@@ -86,6 +86,7 @@ export default function SystemPage(){
         <div className="field"><label htmlFor="connection-name">Connection name</label><input id="connection-name" value={name} onChange={(event)=>setName(event.target.value)} maxLength={80} required/></div>
         <div className="field"><label htmlFor="mcp-endpoint">Official MCP endpoint</label><input id="mcp-endpoint" value={endpoint} onChange={(event)=>setEndpoint(event.target.value)} required/></div>
         <div className="status-row"><span>Mode</span><strong className="healthy">READ_ONLY</strong></div>
+        <div className="status-row"><span>Account scope</span><strong className={broker?.account_scope==="SINGLE_ACCOUNT"?"healthy":"warn"}>{broker?.account_scope||"NOT_SELECTED"}</strong></div>
         <div className="status-row"><span>Connection</span><strong>{status?.status||broker?.status||"NOT_CONFIGURED"}</strong></div>
         <div className="status-row"><span>Trading</span><strong className="bad">DISABLED</strong></div>
         {status?.detail&&<p className="sub">{status.detail}</p>}
