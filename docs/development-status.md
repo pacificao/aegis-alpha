@@ -110,3 +110,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Future governed consensus milestone
 
 - Phase 7 now includes independent proposal verification. Aegis supplies a checksummed proposal and evidence snapshot; a credential-isolated verifier returns an independently auditable assessment. Agreement can only advance a preauthorized low-risk proposal to the deterministic RiskEngine. Disagreement, missing evidence, stale evidence, or verifier failure requires human review or fails closed; both rejection results in rejection. High-impact actions always require human approval, and no AI component may authorize risk or execute.
+
+
+## Phase 6 implementation — awaiting production acceptance
+
+- Deterministic Aegis Risk evaluates immutable policy limits for position, portfolio, sector, correlation, loss, drawdown, volatility, buying power, order sanity, duplicates, freshness, circuit breaker, and kill switch.
+- Authenticated APIs and the Risk UI expose policy, controls, proposal evaluation, and the immutable assessment ledger. Every authorization remains non-executable and trading-disabled.

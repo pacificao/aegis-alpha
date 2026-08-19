@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from .models import BrokerConnectionConfig, DataProvider, Instrument, Phase, StrategyScenario, Task, TaskStatus
 from .roadmap_data import PHASES
+from .risk.service import ensure_defaults
 
 PHASE1_COMPLETE = {
     3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 21, 22, 23, 24, 25,
@@ -56,3 +57,4 @@ def seed_roadmap(db: Session) -> None:
                     notes = "Official Alpha Vantage adapter is implemented and fixture-tested; production API key and live ingestion validation are required."
                 db.add(Task(phase_id=phase.id, ordinal=ordinal, title=title, status=initial_status, notes=notes))
     db.commit()
+    ensure_defaults(db)

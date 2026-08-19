@@ -23,3 +23,10 @@ Uniqueness on provider, data type, and canonical checksum makes retries idempote
 ## Phase 5 research artifacts
 
 `lab_runs` binds an immutable strategy version to the complete backtest configuration and Phase 3 record checksums. It stores metrics, equity curve, walk-forward, Monte Carlo, sensitivity, provenance, status, actor, and timestamp. `(strategy_version_id, configuration_checksum)` is unique. `lab_trades` stores inspectable simulated trade ledger rows and cascades only when its owning Lab run is removed. Lab records contain no broker credential, order, approval, or execution state.
+
+
+## Phase 6 risk artifacts
+
+- `risk_policies`: immutable version, configuration, checksum and active marker.
+- `risk_control_state`: singleton global kill-switch/circuit-breaker state with operator reason.
+- `risk_assessments`: proposal snapshot, deterministic checks, reason codes, outcome, notional and authorization flag. Records are non-executable.

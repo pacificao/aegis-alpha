@@ -26,8 +26,8 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
-from .schemas import DataIngestRequest, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
+from .models import BrokerConnectionConfig, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import DataIngestRequest, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
@@ -35,6 +35,7 @@ from .data.service import ingest as ingest_data, ingest_robinhood, status as dat
 from .seed import seed_roadmap
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
+from .risk.service import assess as assess_risk, serialize as serialize_risk
 
 configure_logging()
 log = structlog.get_logger()
@@ -126,7 +127,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 5, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 6, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -404,3 +405,40 @@ def lab_trades(run_id:int,limit:int=Query(default=500,ge=1,le=5000),_:Principal=
     if db.get(LabRun,run_id) is None:raise HTTPException(status_code=404,detail="Lab run not found")
     rows=db.scalars(select(LabTrade).where(LabTrade.run_id==run_id).order_by(LabTrade.entry_day).limit(limit)).all()
     return [{"id":row.id,"symbol":row.symbol,"entry_day":row.entry_day,"exit_day":row.exit_day,"shares":row.shares,"entry_price":row.entry_price,"exit_price":row.exit_price,"dividends":row.dividends,"costs":row.costs,"pnl":row.pnl,"return_pct":row.return_pct,"holding_days":row.holding_days,"exit_reason":row.exit_reason,"max_drawdown_pct":row.max_drawdown_pct,"trading":"DISABLED"} for row in rows]
+
+
+@app.get("/api/risk/status")
+def risk_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    policy=db.scalar(select(RiskPolicy).where(RiskPolicy.active.is_(True)).order_by(RiskPolicy.version.desc()));controls=db.get(RiskControlState,1)
+    if policy is None or controls is None:raise HTTPException(status_code=503,detail="Risk controls are not initialized")
+    counts=dict(db.execute(select(RiskAssessment.outcome,func.count()).group_by(RiskAssessment.outcome)).all())
+    return {"policy":{"id":policy.id,"version":policy.version,"name":policy.name,"configuration":policy.configuration,"checksum":policy.checksum},"controls":{"kill_switch_engaged":controls.kill_switch_engaged,"circuit_breaker_engaged":controls.circuit_breaker_engaged,"reason":controls.reason,"updated_by":controls.updated_by,"updated_at":controls.updated_at},"assessment_counts":counts,"execution_available":False,"trading":"DISABLED"}
+
+@app.post("/api/risk/assessments",status_code=201)
+def create_risk_assessment(payload:RiskAssessmentRequest,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    if payload.strategy_decision_id is not None and db.get(StrategyDecision,payload.strategy_decision_id) is None:raise HTTPException(status_code=404,detail="Strategy decision not found")
+    try:row=assess_risk(db,payload,principal.username)
+    except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
+    return serialize_risk(row)
+
+@app.get("/api/risk/assessments")
+def risk_assessments(limit:int=Query(default=50,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    return [serialize_risk(row) for row in db.scalars(select(RiskAssessment).order_by(RiskAssessment.created_at.desc()).limit(limit)).all()]
+
+@app.patch("/api/risk/controls")
+def update_risk_controls(payload:RiskControlUpdate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    controls=db.get(RiskControlState,1)
+    if controls is None:raise HTTPException(status_code=503,detail="Risk controls are not initialized")
+    controls.kill_switch_engaged=payload.kill_switch_engaged;controls.circuit_breaker_engaged=payload.circuit_breaker_engaged;controls.reason=payload.reason;controls.updated_by=principal.username
+    db.add(DevelopmentActivity(actor=principal.username,action="risk_controls_updated",entity_type="risk_control_state",entity_id=1,detail=f"kill_switch={payload.kill_switch_engaged}; circuit_breaker={payload.circuit_breaker_engaged}; trading=DISABLED"));db.commit();db.refresh(controls)
+    return {"kill_switch_engaged":controls.kill_switch_engaged,"circuit_breaker_engaged":controls.circuit_breaker_engaged,"reason":controls.reason,"updated_by":controls.updated_by,"updated_at":controls.updated_at,"trading":"DISABLED"}
+
+
+@app.post("/api/risk/policies",status_code=201)
+def create_risk_policy(payload:RiskPolicyCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    configuration=payload.configuration.model_dump(mode="json");checksum=canonical_checksum(configuration)
+    if db.scalar(select(RiskPolicy).where(RiskPolicy.checksum==checksum)) is not None:raise HTTPException(status_code=409,detail="Identical risk policy already exists")
+    for active in db.scalars(select(RiskPolicy).where(RiskPolicy.active.is_(True))).all():active.active=False
+    version=(db.scalar(select(func.max(RiskPolicy.version))) or 0)+1;row=RiskPolicy(version=version,name=payload.name,configuration=configuration,checksum=checksum,active=True,created_by=principal.username);db.add(row);db.flush()
+    db.add(DevelopmentActivity(actor=principal.username,action="risk_policy_created",entity_type="risk_policy",entity_id=row.id,detail=f"Created immutable risk policy v{version}; execution unavailable; trading=DISABLED"));db.commit();db.refresh(row)
+    return {"id":row.id,"version":row.version,"name":row.name,"configuration":row.configuration,"checksum":row.checksum,"active":row.active,"executable":False,"trading":"DISABLED"}
