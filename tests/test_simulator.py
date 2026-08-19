@@ -39,6 +39,7 @@ def test_simulator_api_auth_and_no_live_execution():
     finally:app.dependency_overrides.clear()
 
 def test_paper_module_has_no_broker_dependency():
-    from pathlib import Path
-    source=Path("app/paper/service.py").read_text()
+    import inspect
+    from app.paper import service
+    source=inspect.getsource(service)
     assert "BrokerGateway" not in source and "Robinhood" not in source and "app.broker" not in source
