@@ -41,3 +41,8 @@ def test_no_execution_surface_exists():
 def test_reconciliation_detects_duplicates_and_overfills():
  p=payload();order=p["accounts"][0]["datasets"]["get_equity_orders"][0];order["quantity"]="0.5";p["accounts"][0]["datasets"]["get_equity_orders"].append(dict(order))
  n=normalize(p);r=n["reconciliation"];assert r["status"]=="ATTENTION";assert r["order_refs_unique"] is False;assert r["fill_quantities_valid"] is False
+def test_persisted_disconnected_authorization_can_revalidate_by_read(monkeypatch):
+ monkeypatch.setattr(BrokerGatewayClient,"status",lambda self:{"status":"DISCONNECTED","trading":"DISABLED","mode":"READ_ONLY"});monkeypatch.setattr(BrokerGatewayClient,"account_snapshot",lambda self:payload());app.dependency_overrides[csrf_protected]=lambda:P
+ try:
+  with TestClient(app) as client:r=client.post("/api/broker/robinhood/sync",headers={"X-CSRF-Token":"csrf"});assert r.status_code==200 and r.json()["trading"]=="DISABLED"
+ finally:app.dependency_overrides.clear()

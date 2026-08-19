@@ -238,8 +238,9 @@ def portfolio(_: Principal = Depends(current_principal), db: Session = Depends(g
 
 @app.post("/api/broker/robinhood/sync")
 def broker_sync(principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
-    if BrokerGatewayClient(settings).status().get("status") != "CONNECTED":
-        raise HTTPException(status_code=409, detail="Robinhood read-only connection is not available")
+    connection=BrokerGatewayClient(settings).status().get("status")
+    if connection not in {"CONNECTED","DISCONNECTED"}:
+        raise HTTPException(status_code=409, detail="Robinhood read-only authorization is not available")
     run=synchronize_broker(db,BrokerGatewayClient(settings),principal.username)
     if run.status == "FAILED":raise HTTPException(status_code=502,detail="Read-only broker synchronization failed safely")
     return {"id":run.id,"status":run.status,"attempts":run.attempts,"snapshot_id":run.snapshot_id,"trading":"DISABLED","executable":False}
