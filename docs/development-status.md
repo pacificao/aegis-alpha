@@ -2,7 +2,7 @@
 
 - Current phase: Phase 3 — Aegis Data
 - Current version: `0.2.0-console`
-- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 foundation 8/12 COMPLETE and 4/12 WAITING_FOR_CREDENTIALS
+- Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE
 - Trading: DISABLED by configuration validation and absence of any order endpoint/method.
 
 ## Verified 2026-08-14 through 2026-08-15
@@ -72,4 +72,4 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Deterministic validation covers timestamp sanity, OHLC consistency, nonnegative volume, empty payloads, quote freshness, quality severity, and canonical checksums. Redis readiness caching is bounded and invalidated after ingestion.
 - Authenticated Data Sources UI and APIs expose readiness, bounded records, calendar sessions, audited ingestion, quality counts, freshness, and source URLs. Provider keys never enter the browser.
 - Backend pytest: 15/15 passed. Frontend production build/TypeScript passed. ESLint: 0 errors, 1 existing navigation warning. Vitest: 1/1 passed. Trading remains disabled.
-- Alpha Vantage-dependent history, realtime quotes, corporate actions, and news remain WAITING_FOR_CREDENTIALS until an official production key is configured and live ingestion passes.
+- Alpha Vantage production validation passed with the protected runtime key: 100 SPY daily OHLCV records, one current quote, 111 dividend events, and 50 news records were accepted with zero rejects. The standard daily endpoint is used so the validated implementation does not require the premium adjusted-history endpoint.
