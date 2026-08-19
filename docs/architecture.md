@@ -34,3 +34,7 @@ Provider/model clients submit bounded cited artifacts to the authenticated Intel
 ## Aegis Simulator (Phase 8)
 
 The paper domain consumes only persisted RiskEngine authorizations and normalized quotes. It owns separate paper account/order/fill/position tables and has no broker dependency. Paper state never mutates research, risk policy, broker state, or live portfolios.
+
+## Aegis Gateway (Phase 9)
+
+The Aegis backend can request one bounded read-only account snapshot from the isolated gateway. The gateway discovers official schemas, invokes only exact account/portfolio/position/order-history reads, hashes private identifiers, and returns no OAuth material. Aegis normalizes, reconciles, checksums, persists, and projects the immutable snapshot. Neither side exposes generic MCP invocation or order/review/cancel methods. Phase 9 broker history remains separate from Phase 8 paper state and Phase 6 risk authorization.

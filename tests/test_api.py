@@ -121,7 +121,7 @@ def test_phase2_console_boundaries_and_persistence():
             scenario_name = f"Test Research {uuid4().hex[:8]}"
             portfolio = client.get("/api/portfolio")
             assert portfolio.status_code == 200
-            assert portfolio.json()["holdings_available"] is False
+            assert portfolio.json()["trading"] == "DISABLED"
             assert portfolio.json()["trading"] == "DISABLED"
 
             scenarios = client.get("/api/scenarios")

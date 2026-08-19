@@ -42,3 +42,10 @@ Uniqueness on provider, data type, and canonical checksum makes retries idempote
 - `paper_orders`: single-use RiskAssessment and quote provenance, intent, status, and audit identity.
 - `paper_fills`: deterministic price, quantity, commission, slippage, and time.
 - `paper_positions`: account/symbol quantity and average cost.
+
+## Phase 9 gateway snapshots
+
+- `broker_snapshots`: immutable provider, status, hashed account references, normalized balance/holding/order/fill projections, reconciliation evidence, source time, checksum, and actor. No credential or full account number is permitted.
+- `broker_sync_runs`: append-only status, bounded read-attempt count, safe error code/detail, snapshot reference, and timing.
+
+Retries are idempotent by canonical snapshot checksum. Historical broker orders/fills are observations only and cannot be submitted, edited, cancelled, or converted to executable objects.

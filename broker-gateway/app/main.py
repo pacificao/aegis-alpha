@@ -1,5 +1,7 @@
 """Aegis-owned Robinhood OAuth client and read-only MCP enforcement gateway."""
 import json
+import hashlib
+import hmac
 import secrets
 import asyncio
 import os
@@ -16,7 +18,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import OAuthClientMetadata
 from pydantic import AnyUrl, BaseModel, Field
 
-from .policy import MARKET_DATA_TOOLS, READ_ONLY_TOOLS, contains_sensitive_argument, enforce_tool_allowed, parse_loopback_callback, validate_authorization_url
+from .policy import MARKET_DATA_TOOLS, READ_ONLY_TOOLS, SENSITIVE_ARGUMENT_KEYS, contains_sensitive_argument, enforce_tool_allowed, parse_loopback_callback, validate_authorization_url
 from .storage import EncryptedFileTokenStorage
 
 MCP_URL = "https://agent.robinhood.com/mcp/trading"
@@ -287,3 +289,88 @@ async def disconnect():
     storage.clear()
     _state.update(status="NOT_CONFIGURED", detail="Authorization removed", last_sync_at=None, allowed_tools=0, blocked_tools=0)
     return public_state()
+
+# Phase 9 account synchronization is deliberately bounded to immutable reads.
+ACCOUNT_SNAPSHOT_TOOLS = (
+    "get_portfolio", "get_equity_positions", "get_equity_tax_lots", "get_equity_orders",
+    "get_option_positions", "get_option_orders", "get_crypto_positions", "get_crypto_orders",
+    "get_realized_pnl", "get_pnl_trade_history",
+)
+
+def _records(value: object) -> list[dict]:
+    if isinstance(value, list): return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        for key in ("accounts", "results", "items", "data"):
+            if key in value:
+                rows=_records(value[key])
+                if rows:return rows
+        return [value]
+    return []
+
+def _account_number(row: dict) -> str | None:
+    for key in ("account_number", "account_id", "number"):
+        value=row.get(key)
+        if isinstance(value,(str,int)) and str(value):return str(value)
+    return None
+
+def _opaque(value: object) -> str:
+    return "ref_"+hmac.new(SHARED_SECRET.encode(),str(value).encode(),hashlib.sha256).hexdigest()[:24]
+
+def _sanitize(value: object, key: str="") -> object:
+    lower=key.lower()
+    if lower in SENSITIVE_ARGUMENT_KEYS:return "<redacted>"
+    if isinstance(value,dict):return {str(k):_sanitize(v,str(k)) for k,v in value.items() if str(k).lower() not in SENSITIVE_ARGUMENT_KEYS}
+    if isinstance(value,list):return [_sanitize(v,key) for v in value]
+    if value is not None and ("account" in lower or lower in {"id","order_id","position_id","instrument_id","url"}):return _opaque(value)
+    return value
+
+async def _account_snapshot_session(session: ClientSession) -> dict:
+    advertised={tool.name:tool for tool in (await session.list_tools()).tools}
+    account_result=await call_read_only_tool(session,"get_accounts",{})
+    if account_result.isError:raise RuntimeError("Account read failed")
+    accounts=_records(tool_payload(account_result))
+    output=[]
+    for account in accounts:
+        number=_account_number(account)
+        if not number:continue
+        datasets={};failures=[]
+        for name in ACCOUNT_SNAPSHOT_TOOLS:
+            tool=advertised.get(name)
+            if tool is None:continue
+            schema=tool.inputSchema or {};required=schema.get("required",[]);properties=schema.get("properties",{})
+            args={}
+            for candidate in ("account_number","account_id"):
+                if candidate in properties:args[candidate]=number;break
+            if any(item not in args for item in required):
+                failures.append({"tool":name,"code":"UNSUPPORTED_REQUIRED_ARGUMENT"});continue
+            try:
+                result=await call_read_only_tool(session,name,args)
+                if result.isError:failures.append({"tool":name,"code":"READ_FAILED"})
+                else:
+                    safe=_sanitize(tool_payload(result))
+                    if len(json.dumps(safe,separators=(",",":"),default=str))>1_000_000:failures.append({"tool":name,"code":"RESPONSE_TOO_LARGE"})
+                    else:datasets[name]=safe
+            except Exception:failures.append({"tool":name,"code":"READ_FAILED"})
+        output.append({"account_ref":_opaque(number),"datasets":datasets,"failures":failures})
+    if not output:raise RuntimeError("No readable brokerage accounts")
+    for account in output:
+        for required in ("get_portfolio","get_equity_positions","get_equity_orders"):
+            if required not in advertised:account["failures"].append({"tool":required,"code":"NOT_ADVERTISED"})
+            elif required not in account["datasets"] and not any(x["tool"]==required for x in account["failures"]):account["failures"].append({"tool":required,"code":"READ_FAILED"})
+    return {"status":"COMPLETE","provider":"robinhood","observed_at":datetime.now(UTC).isoformat(),"accounts":output,"trading":"DISABLED","mode":"READ_ONLY"}
+
+@app.post("/internal/account-snapshot",dependencies=[Depends(internal_auth)])
+async def account_snapshot():
+    async def no_redirect(_:str)->None:raise RuntimeError("Robinhood reauthorization is required")
+    async def no_callback()->tuple[str,str|None]:raise RuntimeError("Robinhood reauthorization is required")
+    provider=OAuthClientProvider(server_url=MCP_URL,client_metadata=OAuthClientMetadata(client_name="Aegis Alpha Read-Only Gateway",redirect_uris=[AnyUrl(OAUTH_REDIRECT_URI)],grant_types=["authorization_code","refresh_token"],response_types=["code"],scope="internal"),storage=storage,redirect_handler=no_redirect,callback_handler=no_callback)
+    try:
+        async with httpx.AsyncClient(auth=provider,follow_redirects=True,timeout=30) as client:
+            async with streamable_http_client(MCP_URL,http_client=client) as (read,write,_):
+                async with ClientSession(read,write) as session:
+                    await session.initialize()
+                    snapshot=await _account_snapshot_session(session)
+                    _state.update(status="CONNECTED",detail="Official MCP read-only account snapshot verified",last_sync_at=snapshot["observed_at"])
+                    return snapshot
+    except Exception:
+        raise HTTPException(status_code=502,detail="Robinhood read-only account synchronization failed") from None
