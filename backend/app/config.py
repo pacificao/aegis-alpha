@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     broker_gateway_url: str = "http://broker-gateway:8100"
     broker_gateway_shared_secret: str = Field(default="", min_length=32)
 
+    alpha_vantage_api_key: str = ""
+    fred_api_key: str = ""
+    sec_user_agent: str = "Aegis Alpha admin@pacificao.com"
+    data_cache_ttl_seconds: int = Field(default=300, ge=30, le=86_400)
+    default_market_symbols: str = "SPY,QQQ,AAPL"
     @field_validator("aegis_trading_enabled")
     @classmethod
     def trading_must_remain_disabled(cls, value: bool) -> bool:

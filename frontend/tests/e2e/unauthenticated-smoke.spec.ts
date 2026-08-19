@@ -35,7 +35,7 @@ test("unauthenticated application hydrates and renders the login boundary", asyn
   expect(consoleErrors).toEqual([]);
 });
 
-for (const route of ["/portfolio", "/strategies", "/performance", "/adjustments", "/activity", "/settings", "/roadmap", "/security", "/system"]) {
+for (const route of ["/portfolio", "/strategies", "/performance", "/adjustments", "/data", "/activity", "/settings", "/roadmap", "/security", "/system"]) {
   test(`${route} enforces authentication with a rendered login page`, async ({ page }) => {
     await page.goto(route);
     await expect(page).toHaveURL(/\/login$/);

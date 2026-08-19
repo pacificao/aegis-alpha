@@ -11,3 +11,9 @@ Phase 2 adds authenticated console projections for portfolio-boundary status, re
 
 See `data-model.md`, `security-model.md`, and ADRs in `decisions/`.
 
+
+## Phase 3 data flow
+
+Official provider → allowlisted adapter → normalization → deterministic quality checks → PostgreSQL → bounded Redis cache → authenticated research APIs/UI.
+
+The data layer cannot call RiskEngine or execution. Provider replacement is isolated behind adapters. UTC is authoritative; NYSE and Pacific headquarters time are explicit edge concerns. See `decisions/0004-data-provider-boundary.md`.
