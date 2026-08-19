@@ -40,6 +40,6 @@ export default function AppShell({children}:{children:React.ReactNode}){
       </details>})}
     </nav>
     <div className="rail-status">EXECUTION LAYER<br/><span className="disabled">● TRADING DISABLED</span></div>
-  </aside><main className="content"><div className="topbar"><div className="eyebrow">Private operator console · Phase 05 in progress</div><button className="logout" onClick={logout}><LogOut size={13}/> Logout</button></div>{children}</main></div>
+  </aside><main className="content"><div className="topbar"><div className="eyebrow">Private operator console · Phase 05 complete · Phase 06 next</div><button className="logout" onClick={logout}><LogOut size={13}/> Logout</button></div>{children}</main></div>
 }
 
