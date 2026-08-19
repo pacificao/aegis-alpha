@@ -34,6 +34,7 @@ services:
       AEGIS_UI_URL: ${AEGIS_UI_URL:-https://aegis-alpha.pacificao.com}
       OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-https://aegis-alpha.pacificao.com}
       BROKER_AUTHORIZATION_ENABLED: ${BROKER_AUTHORIZATION_ENABLED:-false}
+      BROKER_EXECUTION_ENABLED: ${BROKER_EXECUTION_ENABLED:-false}
       BROKER_GATEWAY_SHARED_SECRET: ${BROKER_GATEWAY_SHARED_SECRET}
       BROKER_GATEWAY_DATA_DIR: /var/lib/aegis-broker
       BROKER_GATEWAY_KEY_FILE: /run/secrets/broker_key

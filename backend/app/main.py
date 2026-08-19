@@ -26,7 +26,7 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledTradeIntent, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .models import BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
 from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import sessions
@@ -36,6 +36,7 @@ from .seed import seed_roadmap
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
+from .execution.service import reconcile as reconcile_execution
 from .intelligence import validate_artifact, consensus
 from .paper.service import execute as execute_paper, snapshot as paper_snapshot
 from .broker_sync.service import synchronize as synchronize_broker, serialize_snapshot
@@ -529,10 +530,10 @@ def portfolio_history(limit:int=Query(default=500,ge=2,le=2000),_:Principal=Depe
 
 @app.get("/api/controlled-live/readiness")
 def controlled_live_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
-    config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"));snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()));controls=db.get(RiskControlState,1);now=datetime.now(UTC);age=None
+    config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"));gateway=BrokerGatewayClient(settings).status();snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()));controls=db.get(RiskControlState,1);now=datetime.now(UTC);age=None
     if snapshot:
         observed=snapshot.source_observed_at if snapshot.source_observed_at.tzinfo else snapshot.source_observed_at.replace(tzinfo=UTC);age=max(0,int((now-observed).total_seconds()))
-    phase10=db.scalar(select(Phase).where(Phase.number==10));ftp_task=db.scalar(select(Task).where(Task.phase_id==phase10.id,Task.ordinal==9)) if phase10 else None;gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":False,"ftp_port_remediated":bool(ftp_task and ftp_task.status==TaskStatus.COMPLETE),"operator_live_authorization":False}
+    phase10=db.scalar(select(Phase).where(Phase.number==10));ftp_task=db.scalar(select(Task).where(Task.phase_id==phase10.id,Task.ordinal==9)) if phase10 else None;gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":bool(gateway.get("execution_adapter_deployed")),"ftp_port_remediated":bool(ftp_task and ftp_task.status==TaskStatus.COMPLETE),"operator_live_authorization":False}
     return {"paper_trial_ready":all(gates[k] for k in ("single_account_selected","broker_snapshot_present","broker_snapshot_fresh","risk_controls_clear","human_approval_ledger")),"live_ready":all(gates.values()),"gates":gates,"snapshot_age_seconds":age,"mode":"CONTROLLED_TRIAL","order_submission_available":False,"trading":"DISABLED"}
 
 @app.get("/api/controlled-live/intents")
@@ -571,3 +572,34 @@ def reject_controlled_intent(intent_id:int,payload:ControlledIntentRejection,pri
     if row is None:raise HTTPException(status_code=404,detail="Intent not found")
     if row.status!="PROPOSED":raise HTTPException(status_code=409,detail="Intent is not awaiting review")
     row.status="REJECTED";row.rejection_reason=payload.reason;db.add(DevelopmentActivity(actor=principal.username,action="controlled_trade_intent_rejected",entity_type="controlled_trade_intent",entity_id=row.id,detail="Human rejected trial intent; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row);return serialize_controlled_intent(row)
+
+
+@app.get("/api/controlled-live/tool-diagnostic/{tool_name}")
+def controlled_tool_diagnostic(tool_name:str,_:Principal=Depends(current_principal)):
+    if tool_name!="get_realized_pnl":raise HTTPException(status_code=403,detail="Diagnostic outside approved scope")
+    return BrokerGatewayClient(settings).tool_schema(tool_name)
+
+@app.post("/api/controlled-live/intents/{intent_id}/review")
+def review_controlled_intent(intent_id:int,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(ControlledTradeIntent,intent_id)
+    if row is None:raise HTTPException(status_code=404,detail="Intent not found")
+    if row.status!="APPROVED_TRIAL_ONLY" or not row.approval_checksum:raise HTTPException(status_code=409,detail="Exact human approval is required")
+    config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"))
+    if config is None or not config.selected_account_ref:raise HTTPException(status_code=409,detail="Selected account unavailable")
+    payload={"selected_account_ref":config.selected_account_ref,"symbol":row.symbol,"side":row.side,"quantity":row.quantity,"order_type":row.order_type,"limit_price":row.limit_price,"time_in_force":"GFD","intent_checksum":row.intent_checksum,"approval_checksum":row.approval_checksum}
+    result=BrokerGatewayClient(settings).execution_review(payload)
+    if result.get("status")!="REVIEWED" or result.get("order_placed") is not False:raise HTTPException(status_code=409,detail="Official pre-trade review failed safely")
+    record=db.scalar(select(ControlledExecutionRecord).where(ControlledExecutionRecord.intent_id==row.id))
+    if record is None:record=ControlledExecutionRecord(intent_id=row.id,environment="CONTROLLED_LIVE",status="REVIEWED_ONLY",intended_snapshot=row.intent_snapshot,review_snapshot=result.get("review",{}),actual_order={},fills=[],reconciliation={},review_checksum=canonical_checksum(result.get("review",{})),actual_checksum=None,created_by=principal.username);db.add(record)
+    row.status="REVIEWED_TRIAL_ONLY";db.add(DevelopmentActivity(actor=principal.username,action="controlled_order_reviewed",entity_type="controlled_trade_intent",entity_id=row.id,detail="Official pre-trade review only; order_placed=false; trading=DISABLED"));db.commit();db.refresh(record)
+    return {"id":record.id,"intent_id":row.id,"status":record.status,"review_checksum":record.review_checksum,"order_placed":False,"executable":False,"trading":"DISABLED"}
+
+@app.post("/api/controlled-live/intents/{intent_id}/execute")
+def execute_controlled_intent(intent_id:int,_:Principal=Depends(csrf_protected)):
+    if not settings.aegis_trading_enabled:raise HTTPException(status_code=403,detail="Aegis trading is disabled; no broker order was submitted")
+    raise HTTPException(status_code=403,detail="Controlled-live operator authorization is not active")
+
+@app.post("/api/controlled-live/reconcile-fixture")
+def reconcile_controlled_fixture(intended:dict,actual:dict,fills:list[dict],_:Principal=Depends(csrf_protected)):
+    result=reconcile_execution(intended,actual,fills)
+    return {**result,"environment":"FIXTURE","broker_called":False,"trading":"DISABLED"}
