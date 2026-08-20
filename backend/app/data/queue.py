@@ -28,6 +28,8 @@ def enqueue(db:Session,provider:str,dataset:str,symbol:str|None,arguments:dict,p
 def seed_control_jobs(db:Session,now:datetime|None=None)->int:
     now=now or datetime.now(UTC);day=now.date().isoformat();count=0
     if enqueue(db,"alpha_vantage","listing_status",None,{},1,day):count+=1
+    quarter=f"{now.year}-Q{(now.month-1)//3+1}"
+    if enqueue(db,"aegis","robinhood_calendar_discovery",None,{},1,quarter):count+=1
     if enqueue(db,"aegis","freshness_schedule",None,{},2,day):count+=1
     db.commit();return count
 
@@ -39,6 +41,35 @@ def _alpha_used_today(db:Session,now:datetime)->int:
 
 def _defer(job:IngestionJob,when:datetime,detail:str)->None:
     job.status="QUEUED";job.available_at=when;job.detail=detail[:500]
+
+def _symbols(value:object)->set[str]:
+    if isinstance(value,list):
+        return set().union(*(_symbols(item) for item in value),set())
+    if not isinstance(value,dict):return set()
+    found=set()
+    symbol=value.get("symbol")
+    if isinstance(symbol,str) and SYMBOL_RE.fullmatch(symbol.strip().upper()):found.add(symbol.strip().upper())
+    for item in value.values():found.update(_symbols(item))
+    return found
+
+def _discover_robinhood_calendar(db:Session,settings:Settings,now:datetime)->str:
+    from ..gateway import BrokerGatewayClient
+    discovered=set();successful_windows=0
+    for offset in range(-341,32,31):
+        start=(now+timedelta(days=offset)).date().isoformat()
+        try:
+            response=BrokerGatewayClient(settings).market_data("get_earnings_calendar",{"start_date":start,"days":31})
+            discovered.update(_symbols(response.get("data",{})));successful_windows+=1
+        except Exception:continue
+    if not successful_windows:raise ProviderError("Robinhood calendar discovery was unavailable")
+    queued=0
+    for symbol in sorted(discovered):
+        item=db.scalar(select(Instrument).where(Instrument.symbol==symbol))
+        metadata={"listing_source":"robinhood_earnings_calendar","discovered_at":now.isoformat()}
+        if item is None:db.add(Instrument(symbol=symbol,asset_type="EQUITY",active=False,metadata_json=metadata))
+        else:item.metadata_json={**(item.metadata_json or {}),**metadata}
+        if enqueue(db,"robinhood","get_equity_quotes",symbol,{"symbols":[symbol]},5,"initial-validation"):queued+=1
+    db.commit();return f"Discovered {len(discovered)} Robinhood calendar symbols across {successful_windows} windows; queued {queued} validations"
 
 def _discover(db:Session,settings:Settings,now:datetime)->str:
     provider=db.scalar(select(DataProvider).where(DataProvider.name=="alpha_vantage"))
@@ -88,6 +119,7 @@ def process_one(db:Session,settings:Settings,job:IngestionJob,now:datetime|None=
     job.status="RUNNING";job.started_at=now;job.attempts+=1;db.commit()
     try:
         if job.provider=="aegis" and job.dataset=="freshness_schedule":detail=f"Queued {schedule_freshness(db,now)} due freshness jobs"
+        elif job.provider=="aegis" and job.dataset=="robinhood_calendar_discovery":detail=_discover_robinhood_calendar(db,settings,now)
         elif job.provider=="alpha_vantage" and job.dataset=="listing_status":detail=_discover(db,settings,now)
         elif job.provider=="alpha_vantage":
             run=ingest(db,settings,"alpha_vantage",job.dataset,job.symbol);detail=run.detail
