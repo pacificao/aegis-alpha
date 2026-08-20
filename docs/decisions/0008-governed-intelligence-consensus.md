@@ -7,3 +7,8 @@ Store AI-assisted output as immutable, cited artifacts rather than instructions.
 ## Consequences
 
 AI/model providers remain replaceable and credential-isolated. Evidence and reviews are auditable. Consensus never equals risk authorization and cannot execute. The design adds deliberate friction and requires upstream clients to submit structured, cited results.
+
+
+## Implemented verifier boundary
+
+The authenticated Intelligence API can assemble a checksummed bundle from approved normalized record classes. A server-side Codex verifier receives only an immutable artifact package, uses no tools, requests strict structured output, disables API storage, and persists its verdict against the artifact checksum. Reserved model identities cannot be submitted through the human-review endpoint. Model failure or missing credentials fails closed. Aegis-Codex agreement advances only low-impact research posture to RiskEngine review; high-impact recommendations always escalate to the human.

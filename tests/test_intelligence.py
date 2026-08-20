@@ -24,9 +24,12 @@ def test_intelligence_auth_artifacts_reviews_consensus_and_no_authority():
     app.dependency_overrides[current_principal]=lambda:principal;app.dependency_overrides[csrf_protected]=lambda:principal
     try:
       with TestClient(app) as client:
-        status=client.get("/api/intelligence/status");assert status.status_code==200 and status.json()["risk_authority"] is False and status.json()["execution_available"] is False
+        status=client.get("/api/intelligence/status");assert status.status_code==200 and status.json()["risk_authority"] is False and status.json()["execution_available"] is False and status.json()["independent_verification"]=="WAITING_FOR_CREDENTIALS"
+        evidence=client.get("/api/intelligence/evidence/SPY");assert evidence.status_code==200 and evidence.json()["authority"]=="EVIDENCE_ONLY" and evidence.json()["trading"]=="DISABLED"
         created=client.post("/api/intelligence/artifacts",json=artifact(),headers={"X-CSRF-Token":"csrf"});assert created.status_code==201,created.text
-        body=created.json();assert body["governance"]=="HUMAN_REVIEW" and body["risk_authorized"] is False and body["executable"] is False and body["trading"]=="DISABLED"
+        body=created.json();disabled=client.post(f"/api/intelligence/artifacts/{body['id']}/verify/codex",headers={"X-CSRF-Token":"csrf"});assert disabled.status_code==409
+        reserved=client.post(f"/api/intelligence/artifacts/{body['id']}/reviews",json={"reviewer":"codex:forged","verdict":"APPROVE","confidence":0.8,"rationale":"Attempted reserved identity forgery.","evidence_checksum":body["checksum"]},headers={"X-CSRF-Token":"csrf"});assert reserved.status_code==422
+        assert body["governance"]=="HUMAN_REVIEW" and body["risk_authorized"] is False and body["executable"] is False and body["trading"]=="DISABLED"
         bad=client.post(f"/api/intelligence/artifacts/{body['id']}/reviews",json={"reviewer":"Verifier A","verdict":"APPROVE","confidence":0.8,"rationale":"Independent evidence supports this bounded conclusion.","evidence_checksum":"0"*64},headers={"X-CSRF-Token":"csrf"});assert bad.status_code==409
         for reviewer in ["Verifier A","Verifier B"]:
             reviewed=client.post(f"/api/intelligence/artifacts/{body['id']}/reviews",json={"reviewer":reviewer,"verdict":"APPROVE","confidence":0.8,"rationale":"Independent evidence supports this bounded conclusion.","evidence_checksum":body["checksum"]},headers={"X-CSRF-Token":"csrf"});assert reviewed.status_code==201,reviewed.text

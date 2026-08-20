@@ -13,6 +13,11 @@ def validate_artifact(payload,now=None):
 
 def consensus(artifact,reviews):
     independent=[r for r in reviews if r.independent and r.evidence_checksum==artifact.checksum];verdicts=[r.verdict for r in independent]
+    codex=[r for r in independent if getattr(r,"reviewer","").startswith("codex:")]
+    if codex:
+        latest=codex[-1]
+        if latest.verdict=="APPROVE" and artifact.recommendation in {"HOLD","RESEARCH","ADJUST"}:return "ELIGIBLE_FOR_RISK_REVIEW","AEGIS_CODEX_AGREEMENT_LOW_IMPACT"
+        return "HUMAN_REVIEW","AEGIS_CODEX_DISAGREEMENT_OR_HIGH_IMPACT"
     if len(independent)<2:return "HUMAN_REVIEW","INSUFFICIENT_INDEPENDENT_REVIEWS"
     if all(v=="REJECT" for v in verdicts):return "REJECTED","CONSENSUS_REJECT"
     if all(v=="APPROVE" for v in verdicts) and artifact.recommendation in {"HOLD","RESEARCH","ADJUST"}:return "ELIGIBLE_FOR_RISK_REVIEW","CONSENSUS_APPROVE_LOW_IMPACT"
