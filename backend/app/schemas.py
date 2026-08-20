@@ -309,6 +309,9 @@ class RiskPolicyConfiguration(BaseModel):
     max_daily_loss_pct:float=Field(gt=0,le=100);max_drawdown_pct:float=Field(gt=0,le=100);max_annualized_volatility_pct:float=Field(gt=0,le=1000);max_buying_power_use_pct:float=Field(gt=0,le=100)
     max_order_notional:float=Field(gt=0,le=1_000_000_000);max_order_quantity:float=Field(gt=0,le=1_000_000_000);max_price_deviation_bps:float=Field(gt=0,le=10000)
     max_open_orders:int=Field(gt=0,le=100000);max_market_data_age_seconds:int=Field(gt=0,le=86400);max_proposal_age_seconds:int=Field(gt=0,le=86400)
+    micro_account_trial_enabled:bool=True
+    micro_account_portfolio_threshold:float=Field(default=100.0,gt=0,le=1000)
+    micro_account_max_position_notional:float=Field(default=1.0,gt=0,le=10)
 
 class RiskPolicyCreate(BaseModel):
     model_config=ConfigDict(extra="forbid")
