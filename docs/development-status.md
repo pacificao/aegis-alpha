@@ -240,3 +240,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Publisher news-link correction (2026-08-20)
 
 - Corrected Alpha Vantage news provenance so publisher article URLs, not the credentialed provider query endpoint, are persisted and opened from the Dashboard. Existing records use their embedded publisher URL immediately; links are restricted to HTTPS. The configured market-data key remains server-side and unchanged.
+
+
+## Robinhood-first universe expansion (2026-08-20)
+
+- Decoupled official Robinhood collection from Alpha Vantage enrichment. A quarterly rolling one-year official earnings-calendar sweep discovers reporting equities, queues official Robinhood quote validation first, and expands successful symbols into price history, fundamentals, earnings, financials and option metadata. Alpha Vantage dividends, fundamentals and news remain quota-aware independent enrichment.
+- The first live sweep completed all 13 bounded 31-day windows, discovered 5,767 symbols and queued 5,767 validations. Robinhood does not expose a complete tradable-security catalog, so ETFs and non-reporting securities continue to arrive through Alpha Vantage listing discovery. Trading remained disabled.
