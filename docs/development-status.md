@@ -218,3 +218,12 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - The worker is a non-executing, read-only container with no edge exposure, all capabilities dropped, a read-only filesystem, database health check, deterministic deduplication, bounded batches, exponential retry, stale-job recovery and a hard 25-request UTC-day Alpha Vantage ceiling. Trading remains disabled.
 - Freshness is tiered: quotes daily, history/fundamentals/earnings/options weekly, and financials monthly. Technical indicators remain derived from raw bars instead of duplicated. Account-specific tradability remains in the isolated broker domain because the official tool requires the private account number.
 - Alpha Vantage free-tier coverage cannot keep an all-symbol universe current: at roughly 8,000 candidates, one per-symbol dataset alone requires about 320 days at 25 calls/day. The queue preserves work without overrunning quota, but an upgraded/bulk provider is required for timely independent dividends, fundamentals and symbol-specific news at full-universe scale.
+
+
+## Controlled micro-account readiness (2026-08-20)
+
+- Added a deterministic Dividend Farm-only micro-account overlay: below $100 portfolio value, projected position value remains capped at $1; at $100 and above the normal 1% cap applies. All buying-power, gross/sector/correlation exposure, daily-loss, drawdown, volatility, freshness, duplicate, breaker and kill-switch checks remain mandatory. The overlay creates no execution authority.
+- Backend focused safeguards passed 9/9 and the complete backend suite passed 56/56. Frontend Vitest passed 1/1, the production build passed, and lint completed with zero errors and one pre-existing navigation warning. HTTPS health passed with trading DISABLED.
+- Deployed readiness verified: selected Robinhood account present, broker snapshot fresh at 476 seconds, risk controls clear, isolated execution adapter deployed, FTP remediated, and gateway CONNECTED. OpenAI gpt-5-mini returned ABSTAIN at 90% confidence for an evidence-free synthetic $1 BUY; no credential or trade was exposed.
+- No current verified upcoming ex-dividend event exists in normalized corporate-action data, so Aegis correctly has no candidate to paper-trade or elevate. There are 166 completed and 76 queued ingestion jobs with zero recorded quality issues. Live execution and operator authorization remain disabled.
+- Alpaca is deferred to post-production, data-only evaluation and is not on the controlled-launch critical path.

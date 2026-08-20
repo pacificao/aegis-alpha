@@ -8,6 +8,8 @@ Phase 3 establishes trusted research data without adding execution capability. T
 
 Supported adapters:
 
+Alpaca is intentionally deferred to post-production evaluation. No Alpaca credential, ingestion dependency, or trading path is required for the controlled Robinhood launch.
+
 - Alpha Vantage official API: adjusted daily OHLCV, quotes, company overview fundamentals, dividends/corporate actions, and news sentiment. A provider key is required.
 - Federal Reserve FRED: economic observations through the official credential-free CSV endpoint, with optional authenticated JSON API support.
 - SEC EDGAR Data APIs: credential-free company facts using the required identifying User-Agent.

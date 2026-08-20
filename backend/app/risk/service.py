@@ -2,11 +2,11 @@ from __future__ import annotations
 from datetime import UTC,datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from ..models import DevelopmentActivity,RiskAssessment,RiskControlState,RiskPolicy,StrategyDecision,StrategyVersion
+from ..models import DevelopmentActivity,RiskAssessment,RiskControlState,RiskPolicy,StrategyDecision,StrategyScenario,StrategyVersion
 from ..strategy_engine import canonical_checksum
 from .engine import evaluate
 
-DEFAULT_POLICY={"max_position_pct":1.0,"max_portfolio_exposure_pct":25.0,"max_sector_exposure_pct":20.0,"max_correlated_exposure_pct":30.0,"max_daily_loss_pct":2.0,"max_drawdown_pct":10.0,"max_annualized_volatility_pct":40.0,"max_buying_power_use_pct":25.0,"max_order_notional":10000.0,"max_order_quantity":10000.0,"max_price_deviation_bps":100.0,"max_open_orders":20,"max_market_data_age_seconds":300,"max_proposal_age_seconds":300}
+DEFAULT_POLICY={"max_position_pct":1.0,"max_portfolio_exposure_pct":25.0,"max_sector_exposure_pct":20.0,"max_correlated_exposure_pct":30.0,"max_daily_loss_pct":2.0,"max_drawdown_pct":10.0,"max_annualized_volatility_pct":40.0,"max_buying_power_use_pct":25.0,"max_order_notional":10000.0,"max_order_quantity":10000.0,"max_price_deviation_bps":100.0,"max_open_orders":20,"max_market_data_age_seconds":300,"max_proposal_age_seconds":300,"micro_account_trial_enabled":True,"micro_account_portfolio_threshold":100.0,"micro_account_max_position_notional":1.0}
 
 def ensure_defaults(db:Session):
     if db.scalar(select(RiskPolicy).where(RiskPolicy.active.is_(True))) is None:
@@ -24,6 +24,8 @@ def effective_policy(db:Session,configuration:dict,strategy_decision_id:int|None
     limits={"max_position_pct":sizing.get("max_position_pct",parameters.get("max_position_pct")),"max_portfolio_exposure_pct":sizing.get("max_strategy_allocation_pct",parameters.get("max_allocation_pct")),"max_drawdown_pct":parameters.get("max_drawdown_pct"),"max_daily_loss_pct":parameters.get("max_daily_loss_pct")}
     for key,value in limits.items():
         if isinstance(value,(int,float)) and value>=0:effective[key]=min(float(effective[key]),float(value))
+    scenario=db.get(StrategyScenario,version.scenario_id)
+    effective["micro_account_trial_eligible"]=bool(effective.get("micro_account_trial_enabled",True) and scenario and scenario.strategy_type=="DIVIDEND_FARM" and decision.decision in {"ENTRY","EXIT"})
     return effective
 
 def assess(db:Session,payload,actor:str,now:datetime|None=None):

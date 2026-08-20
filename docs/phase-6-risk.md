@@ -4,6 +4,8 @@ Aegis Risk is a deterministic authorization boundary. It evaluates a frozen prop
 
 Every assessment evaluates the global kill switch, circuit breaker, quantity, notional, reference-price deviation, projected position, portfolio, sector and correlated exposure, daily loss, drawdown, annualized volatility, buying-power use, open-order count, market-data freshness, and proposal freshness. Any failed or unavailable control rejects the proposal.
 
+For the explicitly selected Dividend Farm controlled trial only, portfolios below $100 use a deterministic $1 maximum position-value cap so Robinhood fractional-order minimums can be tested. At $100 and above, the strategy reverts to its 1% maximum. The overlay cannot relax buying power, portfolio/sector/correlation exposure, loss, drawdown, volatility, freshness, duplicate, breaker, kill-switch, approval, or execution controls.
+
 Proposal identifiers and policy-plus-request checksums provide duplicate prevention and reproducibility. Identical requests return the persisted assessment; reuse of an identifier with changed content is rejected.
 
 `AUTHORIZED` means only that supplied frozen facts passed the policy. All responses remain `executable=false` and `trading=DISABLED`. Control mutations require authentication and CSRF and create audit activity. No broker credential or OAuth material enters this subsystem.
