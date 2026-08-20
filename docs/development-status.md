@@ -192,3 +192,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - Refreshed the normalized SPY quote through configured Alpha Vantage: ingestion COMPLETE, accepted 1, rejected 0. The only immutable strategy version remains Dividend Farm; no verified upcoming ex-dividend and recovery candidate was available, so the deterministic cycle correctly produced NO_ACTION and recorded it in the development audit ledger. No strategy decision, risk authorization, intent, broker review, simulated fill, or live order was fabricated.
 - Production Trial now exposes Robinhood official pre-trade review after exact browser approval. Review remains simulation-only and records `order_placed=false`; live placement stays disabled. Intended/actual/fill fixture reconciliation remains 4/4 passing, while Phase 10 actual-order and fill tasks remain IN PROGRESS until a separately authorized minimum-value live acceptance order exists.
+
+## Data-capacity pilot and event intelligence (2026-08-19)
+
+- Ran a diversified 16-symbol, multi-strategy collection pilot. Alpha Vantage accepted 1,255 new normalized records and rejected zero. Exact sizing and retention guidance are recorded in `docs/data-model.md`. Current storage remains ample for a bounded daily-data universe; option/intraday retention requires future block storage.
+- Confirmed the configured Alpha Vantage service limit is 25 requests/day, not 100. Burst and daily throttling are fail-closed; remaining coverage is queued for later quota windows rather than bypassed.
+- A provider throttle message disclosed its API key. Redacted 14 persisted occurrences, added general provider-error credential sanitization, and added a regression test. Operator key rotation is required.
+- News aggregation is approved as an evidence input, not an authority. Official/licensed news, SEC filings, issuer releases and macro events take priority. Social signals remain untrusted, time-bounded and corroboration-required.
