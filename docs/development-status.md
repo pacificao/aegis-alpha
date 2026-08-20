@@ -199,3 +199,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Confirmed the configured Alpha Vantage service limit is 25 requests/day, not 100. Burst and daily throttling are fail-closed; remaining coverage is queued for later quota windows rather than bypassed.
 - A provider throttle message disclosed its API key. Redacted 14 persisted occurrences, added general provider-error credential sanitization, and added a regression test. Operator key rotation is required.
 - News aggregation is approved as an evidence input, not an authority. Official/licensed news, SEC filings, issuer releases and macro events take priority. Social signals remain untrusted, time-bounded and corroboration-required.
+
+## Governed multi-source evidence and Codex verification (2026-08-19)
+
+- Added authenticated, checksummed symbol evidence bundles over normalized price, quote, fundamental, corporate-action, news, Robinhood financial/technical/earnings, and options records. Bundles are explicitly evidence-only, non-risk-authorized, non-executable, and trading-disabled. News remains an untrusted event input.
+- Added a credential-isolated Codex verifier using the official OpenAI Responses API with `store=false`, no tools, bounded input, and strict structured review output. The API key is server-side only and never accepted by Aegis UI or persisted. The verifier is disabled and reports WAITING_FOR_CREDENTIALS until the operator configures it.
+- Reserved `codex:` and `aegis:` reviewer identities against UI forgery. A checksum-bound Codex approval can agree with an Aegis low-impact HOLD/RESEARCH/ADJUST proposal and advance it only to deterministic RiskEngine review. Disagreement, abstention, provider failure, malformed output, or BUY/SELL/PAUSE/ESCALATE always requires human review. AI cannot authorize RiskEngine or execute.

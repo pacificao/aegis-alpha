@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     sec_user_agent: str = "Aegis Alpha admin@pacificao.com"
     data_cache_ttl_seconds: int = Field(default=300, ge=30, le=86_400)
     default_market_symbols: str = "SPY,QQQ,AAPL"
+    openai_api_key: str = ""
+    codex_verifier_enabled: bool = False
+    codex_verifier_model: str = "gpt-5.6-sol"
     @field_validator("aegis_trading_enabled")
     @classmethod
     def trading_must_remain_disabled(cls, value: bool) -> bool:
