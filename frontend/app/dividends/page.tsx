@@ -1,0 +1,14 @@
+"use client";
+import {useEffect,useState} from "react";
+import AppShell from "@/components/AppShell";
+import Header from "@/components/Header";
+import {api} from "@/lib/api";
+type Event={id:number;symbol:string;ex_dividend_date:string;amount:string|null;payment_frequency:string|null;payment_date:string|null;annual_yield_pct:string|null;provider:string;coverage:string;quality_status:string};
+type Session={session_date:string;open_at:string;close_at:string;events:Event[]};
+type Calendar={sessions:Session[];event_count:number;primary_provider:string;enrichment_providers:string[];trading:string};
+const money=(value:string|null)=>value==null?"—":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:4}).format(Number(value));
+export default function DividendCalendar(){
+ const[data,setData]=useState<Calendar|null>(null),[error,setError]=useState("");
+ useEffect(()=>{api<Calendar>("/api/data/dividend-calendar?trading_days=10").then(setData).catch(e=>setError(e.message))},[]);
+ return <AppShell><Header title="Dividend Calendar" subtitle="Upcoming ex-dividend events across the next 10 NYSE trading sessions."/><div className="guardrail">Robinhood is primary · Alpha Vantage and Alpaca enrich or independently verify · Research only · Trading disabled</div>{error&&<div className="guardrail">Dividend calendar unavailable: {error}</div>}{!data?<div className="loading">Loading verified dividend schedules…</div>:<><div className="grid"><div className="card metric"><label>Upcoming events</label><strong>{data.event_count}</strong><span className="sub">Next 10 trading days</span></div><div className="card metric"><label>Primary source</label><strong>{data.primary_provider}</strong><span className="sub">Official read-only broker data</span></div><div className="card metric"><label>Enrichment</label><strong>{data.enrichment_providers.length}</strong><span className="sub">Alpha Vantage · Alpaca</span></div><div className="card metric"><label>Trading</label><strong className="bad">{data.trading}</strong><span className="sub">Calendar cannot create orders</span></div></div><div className="dividend-calendar">{data.sessions.map(day=><section className="card dividend-day" key={day.session_date}><div className="calendar-date"><strong>{new Date(`${day.session_date}T12:00:00`).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</strong><span>{day.events.length} event{day.events.length===1?"":"s"}</span></div>{day.events.length?day.events.map(event=><div className="dividend-event" key={`${event.symbol}-${event.ex_dividend_date}`}><div><strong>{event.symbol}</strong><span>{event.payment_frequency??"Frequency unavailable"} · {event.provider}</span></div><div><strong>{money(event.amount)}</strong><span>per share</span></div></div>):<p className="sub">No verified ex-dividend events.</p>}</section>)}</div></>}</AppShell>
+}

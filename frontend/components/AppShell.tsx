@@ -12,6 +12,7 @@ const groups=[
   ]},
   {label:"Scenarios",icon:BookOpen,items:[
     ["/strategies","Library & parameters"],
+    ["/dividends","Dividend calendar"],
   ]},
   {label:"Performance",icon:ChartNoAxesCombined,items:[
     ["/performance","Analytics overview"],

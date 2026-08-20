@@ -1,14 +1,20 @@
 from datetime import UTC, date, datetime, timedelta
+from uuid import uuid4
+from sqlalchemy import select
 
 import httpx
 from fastapi.testclient import TestClient
 
 from app.auth import Principal, csrf_protected, current_principal
-from app.data.calendar import market_session, sessions
+from app.data.calendar import market_session, next_sessions, sessions
 from app.schemas import RobinhoodDataIngestRequest
 from app.data.providers import AlphaVantageProvider, FredProvider, ProviderError, SecEdgarProvider
 from app.data.quality import checksum, validate
-from app.data.service import _safe_error
+from app.data.service import _safe_error, ingest_robinhood
+from app.config import Settings
+from app.database import SessionLocal
+from app.gateway import BrokerGatewayClient
+from app.models import DataRecord
 from app.main import app
 from app import main as main_module
 
@@ -27,6 +33,17 @@ def test_alpha_vantage_news_uses_publisher_article_url():
     payload={"feed":[{"title":"Market report","url":"https://publisher.example/article","time_published":"20260820T120000"}]}
     item=AlphaVantageProvider("fixture-key",client_for(payload)).news("AAPL")[0]
     assert item.source_url=="https://publisher.example/article" and "apikey" not in item.source_url
+
+def test_robinhood_fundamentals_create_dividend_event(monkeypatch):
+    symbol="D"+uuid4().hex[:7].upper();ex_date="2026-09-01"
+    response={"data":{"data":{"results":[{"symbol":symbol,"dividend_yield":"2.5","dividend_per_share":"0.25","distribution_frequency":"Quarterly","payable_date":"2026-09-15","ex_dividend_date":ex_date,"record_date":"2026-09-01"}]}}}
+    monkeypatch.setattr(BrokerGatewayClient,"market_data",lambda self,tool,arguments:response)
+    db=SessionLocal()
+    try:
+        run=ingest_robinhood(db,Settings(),"get_equity_fundamentals",{"symbols":[symbol]},symbol)
+        record=db.scalar(select(DataRecord).where(DataRecord.external_id==f"{symbol}:robinhood:dividend:{ex_date}"))
+        assert run.status=="COMPLETE" and record is not None and record.payload["source_provider"]=="ROBINHOOD"
+    finally:db.close()
 
 def test_official_fred_and_sec_normalization():
     fred=FredProvider("fixture-key",client_for({"observations":[{"date":"2026-08-01","value":"4.2"}]})).observations("UNRATE")
@@ -57,6 +74,7 @@ def test_market_calendar_handles_weekends_and_holidays():
     assert market_session(date(2026,7,3))["is_open"] is False
     assert market_session(date(2026,7,6))["is_open"] is True
     assert len(sessions(date(2026,8,17),date(2026,8,21)))==5
+    upcoming=next_sessions(10,date(2026,8,17));assert len(upcoming)==10 and all(row["is_open"] for row in upcoming)
 
 def test_phase3_data_routes_are_authenticated_and_safe(monkeypatch):
     monkeypatch.setattr(main_module.settings,"alpha_vantage_api_key","")
@@ -72,6 +90,8 @@ def test_phase3_data_routes_are_authenticated_and_safe(monkeypatch):
             assert status.status_code==200 and status.json()["trading"]=="DISABLED"
             queue=client.get("/api/data/queue")
             assert queue.status_code==200 and queue.json()["trading"]=="DISABLED"
+            dividends=client.get("/api/data/dividend-calendar?trading_days=10")
+            assert dividends.status_code==200 and len(dividends.json()["sessions"])==10 and dividends.json()["primary_provider"]=="ROBINHOOD"
             missing=client.post("/api/data/ingest",json={"provider":"alpha_vantage","dataset":"historical","symbol":"AAPL"},headers={"X-CSRF-Token":"csrf"})
             assert missing.status_code==503 and "not configured" in missing.json()["detail"]
             invalid=client.post("/api/data/ingest",json={"provider":"fred","dataset":"economic"},headers={"X-CSRF-Token":"csrf"})
