@@ -41,3 +41,7 @@ The Aegis backend can request one bounded read-only account snapshot from the is
 
 
 The multi-source evidence boundary projects approved normalized records into bounded checksummed symbol bundles for Intelligence consumers. News and future social signals are marked untrusted event inputs. The Codex verifier is an outbound, no-tool, non-executing reviewer; its credential is injected only into the backend runtime and its output can never set `risk_authorized` or call execution.
+
+## Market-data scheduler boundary
+
+The ingestion worker shares only the data and broker-read networks. It has no edge listener, PAM mount, OpenAI credential, execution endpoint or trading authority. It may call allowlisted official market-data tools and public-data providers, persist immutable evidence, and update queue state. Provider responses remain evidence only; Strategy, deterministic RiskEngine and Execution boundaries are unchanged.

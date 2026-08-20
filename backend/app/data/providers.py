@@ -82,6 +82,17 @@ class AlphaVantageProvider(HttpProvider):
             items.append(NormalizedItem("NEWS",row.get("url",row.get("title","")),when,"event",row,self.base_url))
         return items
 
+    def active_listings(self) -> list[dict[str,str]]:
+        response=self.client.get(self.base_url,params={"function":"LISTING_STATUS","state":"active","apikey":self.api_key})
+        response.raise_for_status(); text=response.text
+        if text.lstrip().startswith("{"):
+            try: error=response.json().get("Information") or response.json().get("Note") or response.json().get("Error Message")
+            except ValueError: error=None
+            if error: raise ProviderError(str(error)[:300])
+        rows=list(csv.DictReader(io.StringIO(text)))
+        if not rows or "symbol" not in rows[0]: raise ProviderError("Active listing feed is missing")
+        return rows
+
 class FredProvider(HttpProvider):
     name="fred"
     base_url="https://api.stlouisfed.org/fred/series/observations"

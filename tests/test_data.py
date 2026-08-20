@@ -65,6 +65,8 @@ def test_phase3_data_routes_are_authenticated_and_safe(monkeypatch):
             assert calendar.status_code==200 and len(calendar.json())==5
             status=client.get("/api/data/status")
             assert status.status_code==200 and status.json()["trading"]=="DISABLED"
+            queue=client.get("/api/data/queue")
+            assert queue.status_code==200 and queue.json()["trading"]=="DISABLED"
             missing=client.post("/api/data/ingest",json={"provider":"alpha_vantage","dataset":"historical","symbol":"AAPL"},headers={"X-CSRF-Token":"csrf"})
             assert missing.status_code==503 and "not configured" in missing.json()["detail"]
             invalid=client.post("/api/data/ingest",json={"provider":"fred","dataset":"economic"},headers={"X-CSRF-Token":"csrf"})

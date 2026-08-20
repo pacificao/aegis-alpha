@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     sec_user_agent: str = "Aegis Alpha admin@pacificao.com"
     data_cache_ttl_seconds: int = Field(default=300, ge=30, le=86_400)
     default_market_symbols: str = "SPY,QQQ,AAPL"
+    ingestion_worker_enabled: bool = False
+    ingestion_worker_interval_seconds: int = Field(default=60, ge=10, le=3600)
+    ingestion_worker_batch_size: int = Field(default=10, ge=1, le=100)
+    alpha_vantage_daily_limit: int = Field(default=25, ge=1, le=10000)
     openai_api_key: str = ""
     codex_verifier_enabled: bool = False
     codex_verifier_model: str = "gpt-5-mini"
