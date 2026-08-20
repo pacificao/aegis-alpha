@@ -33,6 +33,7 @@ from .data.calendar import market_session, next_sessions, sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .data.queue import queue_status, seed_control_jobs
+from .data.dividends import company_name, recovery_estimate
 from .seed import seed_roadmap
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
@@ -352,15 +353,38 @@ def data_calendar(start: date = Query(), end: date = Query(), _: Principal = Dep
 @app.get("/api/data/dividend-calendar")
 def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
     calendar=next_sessions(trading_days);dates={row["session_date"] for row in calendar};start=datetime.combine(datetime.now(UTC).date(),datetime.min.time(),tzinfo=UTC);end=datetime.fromisoformat(calendar[-1]["session_date"]).replace(tzinfo=UTC)+timedelta(days=1)
-    records=db.execute(select(DataRecord,Instrument.symbol,DataProvider.name).join(Instrument,Instrument.id==DataRecord.instrument_id).join(DataProvider,DataProvider.id==DataRecord.provider_id).where(DataRecord.data_type=="CORPORATE_ACTION",DataRecord.event_time>=start,DataRecord.event_time<end).order_by(DataRecord.event_time,Instrument.symbol)).all()
+    records=db.execute(select(DataRecord,Instrument.symbol,DataProvider.name).join(Instrument,Instrument.id==DataRecord.instrument_id).join(DataProvider,DataProvider.id==DataRecord.provider_id).where(DataRecord.data_type=="CORPORATE_ACTION",DataRecord.event_time>=start,DataRecord.event_time<end,DataRecord.quality_status!="REJECTED").order_by(DataRecord.event_time,Instrument.symbol)).all()
     selected={}
     for record,symbol,provider in records:
         payload=record.payload or {};day=str(payload.get("ex_dividend_date") or record.event_time.date().isoformat())
         if day not in dates or payload.get("action")!="DIVIDEND":continue
         key=(symbol,day);candidate={"id":record.id,"symbol":symbol,"ex_dividend_date":day,"amount":payload.get("dividend_per_share",payload.get("amount")),"payment_frequency":payload.get("payment_frequency") or payload.get("frequency"),"payment_date":payload.get("payment_date") or payload.get("payable_date"),"annual_yield_pct":payload.get("annual_yield_pct"),"provider":provider.upper(),"coverage":payload.get("coverage","HISTORICAL_EVENT"),"quality_status":record.quality_status}
         if key not in selected or provider=="robinhood":selected[key]=candidate
+    symbols={event["symbol"] for event in selected.values()};evidence={}
+    for symbol in symbols:
+        instrument=db.scalar(select(Instrument).where(Instrument.symbol==symbol));rows=db.scalars(select(DataRecord).where(DataRecord.instrument_id==instrument.id).order_by(DataRecord.event_time.desc())).all() if instrument else []
+        description=None;bars={};action_dates=[]
+        for row in rows:
+            payload=row.payload or {}
+            if row.data_type=="CORPORATE_ACTION" and payload.get("action")=="DIVIDEND":
+                try:action_dates.append(date.fromisoformat(str(payload.get("ex_dividend_date") or row.event_time.date())))
+                except ValueError:pass
+            elif row.data_type=="BROKER_FUNDAMENTAL" and description is None:
+                result=payload.get("result",{});inner=result.get("data",result) if isinstance(result,dict) else {};items=inner.get("results",[]) if isinstance(inner,dict) else []
+                match=next((item for item in items if isinstance(item,dict) and str(item.get("symbol","")).upper()==symbol),None)
+                if match:description=match.get("description")
+            elif row.data_type=="BROKER_OHLCV" and not bars:
+                result=payload.get("result",{});inner=result.get("data",result) if isinstance(result,dict) else {};items=inner.get("results",[]) if isinstance(inner,dict) else []
+                match=next((item for item in items if isinstance(item,dict) and str(item.get("symbol","")).upper()==symbol),None)
+                for bar in (match or {}).get("bars",[]):
+                    try:bars[date.fromisoformat(str(bar["begins_at"])[:10])]=float(bar["close_price"])
+                    except (KeyError,TypeError,ValueError):pass
+            elif row.data_type=="OHLCV":
+                try:bars.setdefault(row.event_time.date(),float(payload.get("adjusted_close",payload["close"])))
+                except (KeyError,TypeError,ValueError):pass
+        evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery_estimate(action_dates,bars,datetime.now(UTC).date())}
     by_day={day:[] for day in dates}
-    for event in selected.values():by_day[event["ex_dividend_date"]].append(event)
+    for event in selected.values():event.update(evidence.get(event["symbol"],{}));by_day[event["ex_dividend_date"]].append(event)
     return {"sessions":[{**row,"events":sorted(by_day[row["session_date"]],key=lambda item:item["symbol"])} for row in calendar],"event_count":len(selected),"primary_provider":"ROBINHOOD","enrichment_providers":["ALPHA_VANTAGE","ALPACA"],"trading":"DISABLED"}
 
 @app.post("/api/data/robinhood/ingest")

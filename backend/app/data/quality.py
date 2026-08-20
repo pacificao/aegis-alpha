@@ -11,7 +11,7 @@ def checksum(data_type: str, external_id: str, event_time: datetime, payload: di
 def validate(data_type: str, event_time: datetime, payload: dict[str,Any], now: datetime | None = None) -> list[tuple[str,str,str]]:
     now=now or datetime.now(UTC); issues=[]
     if event_time.tzinfo is None: issues.append(("ERROR","NAIVE_TIMESTAMP","Event time must include timezone"))
-    elif event_time > now + timedelta(minutes=5): issues.append(("ERROR","FUTURE_TIMESTAMP","Event time is unexpectedly in the future"))
+    elif data_type != "CORPORATE_ACTION" and event_time > now + timedelta(minutes=5): issues.append(("ERROR","FUTURE_TIMESTAMP","Event time is unexpectedly in the future"))
     def finite(value: Any) -> bool: return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value)
     if data_type=="OHLCV":
         required=("open","high","low","close","volume")
