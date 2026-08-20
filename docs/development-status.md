@@ -235,3 +235,8 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Corrected official Robinhood nested account-position normalization. A guide payload can no longer appear as a holding; the selected micro-account now verifies as cash-only with $5 portfolio value, $5 cash, $5 buying power, and zero holdings.
 - The Data Sources UI now reports discovered catalog size, official Robinhood-validated symbols, pending validations, queue counts, and the next eligible job. Universe discovery uses the official Alpha Vantage active stock/ETF catalog, then validates every candidate through official read-only Robinhood quotes before expansion.
 - The persistent worker will resume universe discovery after the verified Alpha Vantage UTC quota reset. The 25-request/day independent-provider cap is enforced; full Robinhood validation/backfill proceeds safely without enabling trading.
+
+
+## Publisher news-link correction (2026-08-20)
+
+- Corrected Alpha Vantage news provenance so publisher article URLs, not the credentialed provider query endpoint, are persisted and opened from the Dashboard. Existing records use their embedded publisher URL immediately; links are restricted to HTTPS. The configured market-data key remains server-side and unchanged.
