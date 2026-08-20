@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ..config import Settings
 from ..models import DataProvider, IngestionJob, IngestionRun, Instrument
-from .providers import AlphaVantageProvider, ProviderError
+from .providers import AlphaVantageProvider, NasdaqTraderProvider, ProviderError
 from .service import ingest, ingest_robinhood
 
 SYMBOL_RE=re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,14}$")
@@ -27,6 +27,7 @@ def enqueue(db:Session,provider:str,dataset:str,symbol:str|None,arguments:dict,p
 
 def seed_control_jobs(db:Session,now:datetime|None=None)->int:
     now=now or datetime.now(UTC);day=now.date().isoformat();count=0
+    if enqueue(db,"aegis","official_symbol_directory",None,{},0,day):count+=1
     if enqueue(db,"alpha_vantage","listing_status",None,{},1,day):count+=1
     quarter=f"{now.year}-Q{(now.month-1)//3+1}"
     if enqueue(db,"aegis","robinhood_calendar_discovery",None,{},1,quarter):count+=1
@@ -70,6 +71,22 @@ def _discover_robinhood_calendar(db:Session,settings:Settings,now:datetime)->str
         else:item.metadata_json={**(item.metadata_json or {}),**metadata}
         if enqueue(db,"robinhood","get_equity_quotes",symbol,{"symbols":[symbol]},5,"initial-validation"):queued+=1
     db.commit();return f"Discovered {len(discovered)} Robinhood calendar symbols across {successful_windows} windows; queued {queued} validations"
+
+def _discover_official_directory(db:Session,now:datetime)->str:
+    rows=NasdaqTraderProvider().directory();queued=0;eligible=0;existing={item.symbol:item for item in db.scalars(select(Instrument)).all()};queued_keys=set(db.scalars(select(IngestionJob.dedupe_key).where(IngestionJob.provider=="robinhood",IngestionJob.dataset=="get_equity_quotes")).all())
+    for row in rows:
+        symbol=row["symbol"];item=existing.get(symbol);supported=bool(SYMBOL_RE.fullmatch(symbol));validation_status="VALIDATED" if item and item.active else "QUEUED" if supported else "UNSUPPORTED_SYMBOL_FORMAT"
+        metadata={"listing_source":"nasdaq_trader","official_directory_at":now.isoformat(),"source_url":row["source_url"],"robinhood_validation_status":validation_status}
+        if item is None:
+            item=Instrument(symbol=symbol,name=row["name"][:255],asset_type=row["asset_type"],exchange=row["exchange"][:30],active=False,metadata_json=metadata);db.add(item)
+        else:
+            item.name=(row["name"] or item.name)[:255];item.asset_type=row["asset_type"];item.exchange=(row["exchange"] or item.exchange)[:30];item.metadata_json={**(item.metadata_json or {}),**metadata}
+        if supported:
+            eligible+=1
+            validation_key=_key("robinhood","get_equity_quotes",symbol,"initial-validation",{"symbols":[symbol]})
+            if validation_key not in queued_keys and enqueue(db,"robinhood","get_equity_quotes",symbol,{"symbols":[symbol]},5,"initial-validation"):
+                queued+=1;queued_keys.add(validation_key)
+    db.commit();return f"Discovered {len(rows)} official exchange-listed securities; {eligible} supported symbol formats; queued {queued} Robinhood validations"
 
 def _discover(db:Session,settings:Settings,now:datetime)->str:
     provider=db.scalar(select(DataProvider).where(DataProvider.name=="alpha_vantage"))
@@ -118,7 +135,8 @@ def process_one(db:Session,settings:Settings,job:IngestionJob,now:datetime|None=
         tomorrow=datetime(now.year,now.month,now.day,tzinfo=UTC)+timedelta(days=1,minutes=5);_defer(job,tomorrow,"Deferred by Alpha Vantage daily quota");db.commit();return "DEFERRED_QUOTA"
     job.status="RUNNING";job.started_at=now;job.attempts+=1;db.commit()
     try:
-        if job.provider=="aegis" and job.dataset=="freshness_schedule":detail=f"Queued {schedule_freshness(db,now)} due freshness jobs"
+        if job.provider=="aegis" and job.dataset=="official_symbol_directory":detail=_discover_official_directory(db,now)
+        elif job.provider=="aegis" and job.dataset=="freshness_schedule":detail=f"Queued {schedule_freshness(db,now)} due freshness jobs"
         elif job.provider=="aegis" and job.dataset=="robinhood_calendar_discovery":detail=_discover_robinhood_calendar(db,settings,now)
         elif job.provider=="alpha_vantage" and job.dataset=="listing_status":detail=_discover(db,settings,now)
         elif job.provider=="alpha_vantage":

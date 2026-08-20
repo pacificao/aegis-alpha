@@ -3,7 +3,7 @@ from uuid import uuid4
 import httpx
 from sqlalchemy import select
 from app.config import Settings
-from app.data.providers import AlphaVantageProvider
+from app.data.providers import AlphaVantageProvider,NasdaqTraderProvider
 from app.data.queue import _symbols,enqueue,process_one,queue_status,schedule_freshness
 from app.database import SessionLocal
 from app.models import DataProvider,IngestionJob,IngestionRun,Instrument
@@ -13,6 +13,13 @@ def test_active_listing_csv_is_parsed():
     def handler(request):return httpx.Response(200,text=csv,request=request)
     rows=AlphaVantageProvider("fixture",httpx.Client(transport=httpx.MockTransport(handler))).active_listings()
     assert [row["symbol"] for row in rows]==["AAPL","SPY"]
+
+def test_official_exchange_directory_includes_strategy_neutral_security_types():
+    nasdaq="Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares\nQQQ|Invesco QQQ ETF|Q|N|N|100|Y|N\nTEST|Test Issue|Q|Y|N|100|N|N\nFile Creation Time: 0820202621:00|||||||\n"
+    other="ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol\nABC|Example Corp Common Stock|N|ABC|N|100|N|ABC\nABCP|Example Corp Preferred Stock|N|ABCP|N|100|N|ABCP\nABCW|Example Corp Warrant|N|ABCW|N|100|N|ABCW\n"
+    def handler(request):return httpx.Response(200,text=nasdaq if "nasdaqlisted" in str(request.url) else other,request=request)
+    rows=NasdaqTraderProvider(httpx.Client(transport=httpx.MockTransport(handler))).directory();types={row["symbol"]:row["asset_type"] for row in rows}
+    assert types=={"QQQ":"ETF","ABC":"EQUITY","ABCP":"PREFERRED","ABCW":"WARRANT"}
 
 def test_robinhood_calendar_symbol_discovery_is_bounded():
     payload={"data":{"results":[{"symbol":"AAPL"},{"symbol":"BRK.B"},{"symbol":"bad symbol"}]},"guide":"not a ticker"}
