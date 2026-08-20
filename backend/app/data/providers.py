@@ -79,7 +79,9 @@ class AlphaVantageProvider(HttpProvider):
         for row in rows:
             published=row.get("time_published","")
             when=datetime.strptime(published,"%Y%m%dT%H%M%S").replace(tzinfo=UTC) if published else datetime.now(UTC)
-            items.append(NormalizedItem("NEWS",row.get("url",row.get("title","")),when,"event",row,self.base_url))
+            article_url=row.get("url","")
+            source_url=article_url if isinstance(article_url,str) and article_url.startswith("https://") else self.base_url
+            items.append(NormalizedItem("NEWS",article_url or row.get("title",""),when,"event",row,source_url))
         return items
 
     def active_listings(self) -> list[dict[str,str]]:

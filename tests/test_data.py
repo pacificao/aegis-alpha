@@ -23,6 +23,11 @@ def test_alpha_vantage_normalizes_daily_history():
     item=AlphaVantageProvider("fixture-key",client_for(payload)).historical_daily("AAPL")[0]
     assert item.data_type=="OHLCV" and item.payload["close"]==103 and item.payload["volume"]==12345
 
+def test_alpha_vantage_news_uses_publisher_article_url():
+    payload={"feed":[{"title":"Market report","url":"https://publisher.example/article","time_published":"20260820T120000"}]}
+    item=AlphaVantageProvider("fixture-key",client_for(payload)).news("AAPL")[0]
+    assert item.source_url=="https://publisher.example/article" and "apikey" not in item.source_url
+
 def test_official_fred_and_sec_normalization():
     fred=FredProvider("fixture-key",client_for({"observations":[{"date":"2026-08-01","value":"4.2"}]})).observations("UNRATE")
     assert fred[0].data_type=="ECONOMIC" and fred[0].payload["series_id"]=="UNRATE"
