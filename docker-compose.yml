@@ -110,8 +110,9 @@ services:
       INGESTION_WORKER_INTERVAL_SECONDS: ${INGESTION_WORKER_INTERVAL_SECONDS:-60}
       INGESTION_WORKER_BATCH_SIZE: ${INGESTION_WORKER_BATCH_SIZE:-10}
       ALPHA_VANTAGE_DAILY_LIMIT: ${ALPHA_VANTAGE_DAILY_LIMIT:-25}
-    networks: [data, broker]
+    networks: [edge, data, broker]
     depends_on:
+      backend: {condition: service_healthy}
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       broker-gateway: {condition: service_healthy}
