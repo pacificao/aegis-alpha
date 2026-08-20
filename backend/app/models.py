@@ -119,6 +119,24 @@ class DataRecord(Base):
     quality_status: Mapped[str] = mapped_column(String(20), default="VALID")
     checksum: Mapped[str] = mapped_column(String(64), index=True)
 
+class IngestionJob(Base):
+    __tablename__ = "ingestion_jobs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(60), index=True)
+    dataset: Mapped[str] = mapped_column(String(60), index=True)
+    symbol: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    arguments: Mapped[dict] = mapped_column(JSON, default=dict)
+    priority: Mapped[int] = mapped_column(Integer, default=100, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="QUEUED", index=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=8)
+    dedupe_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 class IngestionRun(Base):
     __tablename__ = "ingestion_runs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
