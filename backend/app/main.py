@@ -32,6 +32,7 @@ from .data.cache import DataCache
 from .data.calendar import sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
+from .data.queue import queue_status, seed_control_jobs
 from .seed import seed_roadmap
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
@@ -325,6 +326,15 @@ def data_status(_: Principal = Depends(current_principal), db: Session = Depends
     try: cache.set("status",value)
     except redis.RedisError: pass
     return value
+
+@app.get("/api/data/queue")
+def data_queue_status(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    return queue_status(db)
+
+@app.post("/api/data/queue/seed")
+def data_queue_seed(_: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
+    created=seed_control_jobs(db)
+    return {"created":created,"queue":queue_status(db),"trading":"DISABLED"}
 
 @app.get("/api/data/records")
 def data_records(data_type: str | None = Query(default=None,max_length=40), symbol: str | None = Query(default=None,max_length=16), limit: int = Query(default=100,ge=1,le=1000), _: Principal = Depends(current_principal), db: Session = Depends(get_db)):

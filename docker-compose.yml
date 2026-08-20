@@ -76,7 +76,7 @@ services:
       DEFAULT_MARKET_SYMBOLS: ${DEFAULT_MARKET_SYMBOLS:-SPY,QQQ,AAPL}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CODEX_VERIFIER_ENABLED: ${CODEX_VERIFIER_ENABLED:-false}
-      CODEX_VERIFIER_MODEL: ${CODEX_VERIFIER_MODEL:-gpt-5.6-sol}
+      CODEX_VERIFIER_MODEL: ${CODEX_VERIFIER_MODEL:-gpt-5-mini}
     volumes:
       - /run/aegis-auth:/run/aegis-auth
       - ./tests:/app/tests:ro
@@ -87,6 +87,41 @@ services:
       broker-gateway: {condition: service_healthy}
     read_only: true
     tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: unless-stopped
+
+  ingestion-worker:
+    build: ./backend
+    command: ["python", "-m", "app.data.worker"]
+    extra_hosts:
+      - "brokerage.aegis-alpha.pacificao.com:${BROKER_GATEWAY_PRIVATE_IP:-10.124.0.4}"
+    environment:
+      AEGIS_ENV: ${AEGIS_ENV}
+      AEGIS_TRADING_ENABLED: "false"
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      BROKER_GATEWAY_URL: ${BROKER_GATEWAY_URL:-https://brokerage.aegis-alpha.pacificao.com}
+      BROKER_GATEWAY_SHARED_SECRET: ${BROKER_GATEWAY_SHARED_SECRET}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      FRED_API_KEY: ${FRED_API_KEY:-}
+      SEC_USER_AGENT: ${SEC_USER_AGENT:-Aegis Alpha admin@pacificao.com}
+      INGESTION_WORKER_ENABLED: ${INGESTION_WORKER_ENABLED:-false}
+      INGESTION_WORKER_INTERVAL_SECONDS: ${INGESTION_WORKER_INTERVAL_SECONDS:-60}
+      INGESTION_WORKER_BATCH_SIZE: ${INGESTION_WORKER_BATCH_SIZE:-10}
+      ALPHA_VANTAGE_DAILY_LIMIT: ${ALPHA_VANTAGE_DAILY_LIMIT:-25}
+    networks: [data, broker]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      broker-gateway: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.database import engine; c=engine.connect(); c.close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     restart: unless-stopped
