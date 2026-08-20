@@ -4,7 +4,7 @@ import httpx
 from sqlalchemy import select
 from app.config import Settings
 from app.data.providers import AlphaVantageProvider
-from app.data.queue import enqueue,process_one,queue_status,schedule_freshness
+from app.data.queue import _symbols,enqueue,process_one,queue_status,schedule_freshness
 from app.database import SessionLocal
 from app.models import DataProvider,IngestionJob,IngestionRun,Instrument
 
@@ -13,6 +13,10 @@ def test_active_listing_csv_is_parsed():
     def handler(request):return httpx.Response(200,text=csv,request=request)
     rows=AlphaVantageProvider("fixture",httpx.Client(transport=httpx.MockTransport(handler))).active_listings()
     assert [row["symbol"] for row in rows]==["AAPL","SPY"]
+
+def test_robinhood_calendar_symbol_discovery_is_bounded():
+    payload={"data":{"results":[{"symbol":"AAPL"},{"symbol":"BRK.B"},{"symbol":"bad symbol"}]},"guide":"not a ticker"}
+    assert _symbols(payload)=={"AAPL","BRK.B"}
 
 def test_queue_is_idempotent_and_never_enables_trading():
     db=SessionLocal();symbol="Q"+uuid4().hex[:8].upper()
