@@ -227,3 +227,11 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Deployed readiness verified: selected Robinhood account present, broker snapshot fresh at 476 seconds, risk controls clear, isolated execution adapter deployed, FTP remediated, and gateway CONNECTED. OpenAI gpt-5-mini returned ABSTAIN at 90% confidence for an evidence-free synthetic $1 BUY; no credential or trade was exposed.
 - No current verified upcoming ex-dividend event exists in normalized corporate-action data, so Aegis correctly has no candidate to paper-trade or elevate. There are 166 completed and 76 queued ingestion jobs with zero recorded quality issues. Live execution and operator authorization remain disabled.
 - Alpaca is deferred to post-production, data-only evaluation and is not on the controlled-launch critical path.
+
+
+## Investment command center and universe seeding (2026-08-20)
+
+- Reworked the Dashboard around decisions: verified capital and direction, a unified approval queue, deterministic risk gates, broker evidence, paper/live readiness, portfolio-prioritized news, Dividend Farm candidates, and evidence freshness. Operational server detail remains under System.
+- Corrected official Robinhood nested account-position normalization. A guide payload can no longer appear as a holding; the selected micro-account now verifies as cash-only with $5 portfolio value, $5 cash, $5 buying power, and zero holdings.
+- The Data Sources UI now reports discovered catalog size, official Robinhood-validated symbols, pending validations, queue counts, and the next eligible job. Universe discovery uses the official Alpha Vantage active stock/ETF catalog, then validates every candidate through official read-only Robinhood quotes before expansion.
+- The persistent worker will resume universe discovery after the verified Alpha Vantage UTC quota reset. The 25-request/day independent-provider cap is enforced; full Robinhood validation/backfill proceeds safely without enabling trading.

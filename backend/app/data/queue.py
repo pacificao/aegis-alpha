@@ -110,5 +110,6 @@ def run_batch(db:Session,settings:Settings,limit:int|None=None)->dict:
     results["processed"]=len(jobs);return results
 
 def queue_status(db:Session)->dict:
-    counts=dict(db.execute(select(IngestionJob.status,func.count()).group_by(IngestionJob.status)).all());providers=dict(db.execute(select(IngestionJob.provider,func.count()).where(IngestionJob.status=="QUEUED").group_by(IngestionJob.provider)).all());validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0)
-    return {"counts":counts,"queued_by_provider":providers,"active_validated_instruments":validated,"trading":"DISABLED"}
+    counts=dict(db.execute(select(IngestionJob.status,func.count()).group_by(IngestionJob.status)).all());providers=dict(db.execute(select(IngestionJob.provider,func.count()).where(IngestionJob.status=="QUEUED").group_by(IngestionJob.provider)).all());validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0);catalog=int(db.scalar(select(func.count()).select_from(Instrument)) or 0)
+    next_job=db.scalar(select(func.min(IngestionJob.available_at)).where(IngestionJob.status=="QUEUED"))
+    return {"counts":counts,"queued_by_provider":providers,"catalog_instruments":catalog,"active_validated_instruments":validated,"pending_robinhood_validation":max(catalog-validated,0),"next_job_at":next_job,"trading":"DISABLED"}

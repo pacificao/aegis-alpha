@@ -12,6 +12,9 @@ def payload():
  return {"status":"COMPLETE","provider":"robinhood","observed_at":datetime.now(UTC).isoformat(),"accounts":[{"account_ref":"ref_0123456789abcdef01234567","datasets":{"get_portfolio":{"equity":"1000.00","buying_power":"250.00"},"get_equity_positions":[{"symbol":"SPY","quantity":"1","equity":"500"}],"get_equity_orders":[{"id":"ref_order","state":"filled","executions":[{"quantity":"1","price":"500"}]}]},"failures":[]}],"trading":"DISABLED","mode":"READ_ONLY"}
 def test_normalizes_balances_holdings_orders_fills_and_reconciles():
  n=normalize(payload());assert n["status"]=="VERIFIED";assert len(n["balances"])==1;assert len(n["holdings"])==1;assert len(n["orders"])==1;assert len(n["fills"])==1;assert n["reconciliation"]["status"]=="MATCHED";assert len(n["checksum"])==64
+def test_normalizes_official_nested_data_without_counting_guide_as_position():
+ p=payload();p["accounts"][0]["datasets"]["get_equity_positions"]={"data":{"positions":[]},"guide":"display guidance"}
+ n=normalize(p);assert n["holdings"][0]["records"]==[]
 def test_unsafe_gateway_response_fails_closed():
  p=payload();p["trading"]="ENABLED"
  try:normalize(p);assert False
