@@ -95,7 +95,7 @@ def _discover(db:Session,settings:Settings,now:datetime)->str:
 def _expand_validated(db:Session,symbol:str,now:datetime)->int:
     item=db.scalar(select(Instrument).where(Instrument.symbol==symbol))
     if item:item.active=True;item.metadata_json={**(item.metadata_json or {}),"robinhood_market_data_validated_at":now.isoformat()}
-    jobs=[("get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10),("get_equity_fundamentals",{"symbols":[symbol]},6),("get_earnings_results",{"symbol":symbol},20),("get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},25),("get_option_chains",{"underlying_symbol":symbol},40)]
+    jobs=[("get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10),("get_equity_fundamentals",{"symbols":[symbol]},4),("get_earnings_results",{"symbol":symbol},20),("get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},25),("get_option_chains",{"underlying_symbol":symbol},40)]
     count=0
     for dataset,args,priority in jobs:
         if enqueue(db,"robinhood",dataset,symbol,args,priority,"initial-core"):count+=1
@@ -107,7 +107,7 @@ def schedule_freshness(db:Session,now:datetime)->int:
     day=now.date().isoformat();iso=now.isocalendar();week=f"{iso.year}-W{iso.week:02d}";month=day[:7];count=0
     symbols=db.scalars(select(Instrument.symbol).where(Instrument.active.is_(True),Instrument.symbol.not_like("%,%"))).all()
     for symbol in symbols:
-        jobs=[("robinhood","get_equity_quotes",{"symbols":[symbol]},5,day),("robinhood","get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10,week),("robinhood","get_earnings_results",{"symbol":symbol},20,week),("robinhood","get_equity_fundamentals",{"symbols":[symbol]},25,week),("robinhood","get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},30,month),("robinhood","get_option_chains",{"underlying_symbol":symbol},45,week),("alpha_vantage","dividends",{},60,month),("alpha_vantage","fundamentals",{},70,month)]
+        jobs=[("robinhood","get_equity_quotes",{"symbols":[symbol]},5,day),("robinhood","get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10,week),("robinhood","get_earnings_results",{"symbol":symbol},20,week),("robinhood","get_equity_fundamentals",{"symbols":[symbol]},4,week),("robinhood","get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},30,month),("robinhood","get_option_chains",{"underlying_symbol":symbol},45,week),("alpha_vantage","dividends",{},60,month),("alpha_vantage","fundamentals",{},70,month)]
         for provider,dataset,args,priority,bucket in jobs:
             if enqueue(db,provider,dataset,symbol,args,priority,bucket):count+=1
     db.commit();return count

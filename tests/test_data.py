@@ -94,6 +94,7 @@ def test_phase3_data_routes_are_authenticated_and_safe(monkeypatch):
             assert queue.status_code==200 and queue.json()["trading"]=="DISABLED"
             dividends=client.get("/api/data/dividend-calendar?trading_days=10")
             assert dividends.status_code==200 and len(dividends.json()["sessions"])==10 and dividends.json()["primary_provider"]=="ROBINHOOD"
+            assert dividends.json()["coverage"]["status"] in {"BACKFILLING","COMPLETE"}
             missing=client.post("/api/data/ingest",json={"provider":"alpha_vantage","dataset":"historical","symbol":"AAPL"},headers={"X-CSRF-Token":"csrf"})
             assert missing.status_code==503 and "not configured" in missing.json()["detail"]
             invalid=client.post("/api/data/ingest",json={"provider":"fred","dataset":"economic"},headers={"X-CSRF-Token":"csrf"})
