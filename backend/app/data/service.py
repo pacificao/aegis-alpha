@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import re
 from typing import Iterable
 
 from sqlalchemy import func, select
@@ -11,6 +12,12 @@ from ..config import Settings
 from ..models import DataProvider, DataQualityIssue, DataRecord, IngestionRun, Instrument
 from .providers import AlphaVantageProvider, FredProvider, NormalizedItem, ProviderError, SecEdgarProvider
 from .quality import checksum, validate
+
+def _safe_error(exc:Exception)->str:
+    text=str(exc)
+    patterns=(r"(?i)(api[ _-]?key(?:\s+as)?\s*[:=]?\s*)[A-Za-z0-9._-]+",r"(?i)((?:password|secret|token|authorization)\s*[:=]\s*)[^\s,;]+",r"(?i)([?&](?:apikey|api_key|token)=)[^&\s]+")
+    for pattern in patterns:text=re.sub(pattern,r"\1<redacted>",text)
+    return text[:500]
 
 PROVIDER_DATASETS={"alpha_vantage":{"historical","quote","fundamentals","dividends","news"},"fred":{"economic"},"sec_edgar":{"companyfacts"}}
 
@@ -68,7 +75,7 @@ def ingest(db: Session, settings: Settings, name: str, dataset: str, symbol: str
         provider.last_success_at=datetime.now(UTC); provider.last_error=""; provider.credential_status="CONFIGURED" if name=="alpha_vantage" else "NOT_REQUIRED"
     except Exception as exc:
         db.rollback(); run=db.get(IngestionRun,run.id); provider=db.get(DataProvider,provider.id)
-        run.status="ERROR"; run.detail=str(exc)[:500]; provider.last_error=type(exc).__name__; provider.credential_status="WAITING_FOR_CREDENTIALS" if "key is not configured" in str(exc) else provider.credential_status
+        run.status="ERROR"; run.detail=_safe_error(exc); provider.last_error=type(exc).__name__; provider.credential_status="WAITING_FOR_CREDENTIALS" if "key is not configured" in str(exc) else provider.credential_status
     run.completed_at=datetime.now(UTC); db.commit(); db.refresh(run)
     return run
 
@@ -102,7 +109,7 @@ def ingest_robinhood(db: Session, settings: Settings, tool: str, arguments: dict
         provider.last_success_at=observed; provider.last_error=""; provider.credential_status="CONFIGURED"
     except Exception as exc:
         db.rollback(); run=db.get(IngestionRun,run.id); provider=db.get(DataProvider,provider.id)
-        run.status="ERROR"; run.detail=str(exc)[:500]; provider.last_error=type(exc).__name__
+        run.status="ERROR"; run.detail=_safe_error(exc); provider.last_error=type(exc).__name__
     run.completed_at=datetime.now(UTC); db.commit(); db.refresh(run); return run
 
 def status(db: Session) -> dict:

@@ -8,6 +8,7 @@ from app.data.calendar import market_session, sessions
 from app.schemas import RobinhoodDataIngestRequest
 from app.data.providers import AlphaVantageProvider, FredProvider, ProviderError, SecEdgarProvider
 from app.data.quality import checksum, validate
+from app.data.service import _safe_error
 from app.main import app
 from app import main as main_module
 
@@ -32,6 +33,12 @@ def test_provider_credentials_fail_closed():
     for factory in (lambda:AlphaVantageProvider(""),lambda:SecEdgarProvider("Aegis Alpha")):
         try: factory(); assert False
         except ProviderError: pass
+
+def test_provider_errors_redact_credentials():
+    message="API key as SUPERSECRET123 and https://example.test/?apikey=SECONDSECRET"
+    safe=_safe_error(ProviderError(message))
+    assert "SUPERSECRET123" not in safe and "SECONDSECRET" not in safe
+    assert safe.count("<redacted>")==2
 
 def test_quality_checks_and_deterministic_checksum():
     when=datetime.now(UTC)-timedelta(minutes=20); payload={"price":10.0}
