@@ -18,13 +18,16 @@ def evaluate(policy:dict[str,Any],proposal:dict[str,Any],controls:dict[str,bool]
     age=(now-proposal["market_data_as_of"].astimezone(UTC)).total_seconds()
     proposal_age=(now-proposal["proposal_created_at"].astimezone(UTC)).total_seconds()
     deviation=abs(price-reference)/reference*10000
+    percent_position_limit=portfolio*policy["max_position_pct"]/100
+    micro_trial=bool(policy.get("micro_account_trial_eligible",False)) and portfolio<float(policy.get("micro_account_portfolio_threshold",100.0))
+    position_limit=max(percent_position_limit,float(policy.get("micro_account_max_position_notional",1.0))) if micro_trial else percent_position_limit
     c=[
       _check("KILL_SWITCH_CLEAR",not controls["kill_switch_engaged"],controls["kill_switch_engaged"],False,"Global kill switch must be clear"),
       _check("CIRCUIT_BREAKER_CLEAR",not controls["circuit_breaker_engaged"],controls["circuit_breaker_engaged"],False,"Circuit breaker must be clear"),
       _check("ORDER_QUANTITY",0<quantity<=policy["max_order_quantity"],quantity,policy["max_order_quantity"],"Quantity must be positive and bounded"),
       _check("ORDER_NOTIONAL",0<notional<=policy["max_order_notional"],notional,policy["max_order_notional"],"Order notional limit"),
       _check("PRICE_SANITY",0<price and deviation<=policy["max_price_deviation_bps"],round(deviation,6),policy["max_price_deviation_bps"],"Price deviation from reference"),
-      _check("POSITION_LIMIT",projected_position<=portfolio*policy["max_position_pct"]/100,projected_position,portfolio*policy["max_position_pct"]/100,"Projected position limit"),
+      _check("POSITION_LIMIT",projected_position<=position_limit,projected_position,position_limit,"Projected position limit (controlled micro-account exception)" if micro_trial else "Projected position limit"),
       _check("PORTFOLIO_EXPOSURE",projected_exposure<=portfolio*policy["max_portfolio_exposure_pct"]/100,projected_exposure,portfolio*policy["max_portfolio_exposure_pct"]/100,"Projected gross exposure limit"),
       _check("SECTOR_EXPOSURE",projected_sector<=portfolio*policy["max_sector_exposure_pct"]/100,projected_sector,portfolio*policy["max_sector_exposure_pct"]/100,"Projected sector exposure limit"),
       _check("CORRELATION_EXPOSURE",projected_correlation<=portfolio*policy["max_correlated_exposure_pct"]/100,projected_correlation,portfolio*policy["max_correlated_exposure_pct"]/100,"Projected correlated exposure limit"),

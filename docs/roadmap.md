@@ -15,5 +15,7 @@ The complete task-level roadmap is canonically defined in `backend/app/roadmap_d
 11. **Aegis Autonomy** — strategy, capital, asset, size, loss, portfolio, and granular permission bounds.
 12. **Aegis Evolution** — continuous research/refinement/allocation/regime selection, agent evaluation, new data/brokers/assets, optional local inference, and provider-neutral scheduled/audited operator notifications.
 
+Post-production backlog: evaluate Alpaca strictly as an optional data-only provider after controlled Robinhood production validation; it is not a launch dependency and may never imply Alpaca order authority.
+
 Task wording in the canonical data file exactly drives the web UI so documentation, persistence, and presentation cannot drift independently.
 

@@ -32,6 +32,22 @@ def test_every_phase6_control_fails_closed():
         result=evaluate(DEFAULT_POLICY,proposal(**changes),controls or {"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
         assert result["outcome"]=="REJECTED" and code in result["reason_codes"] and result["risk_authorized"] is False
 
+def test_micro_account_exception_is_bounded_and_explicit():
+    policy={**DEFAULT_POLICY,"micro_account_trial_eligible":True}
+    base={"price":500,"reference_price":500,"portfolio_value":5,"buying_power":5,"total_exposure_value":0,"sector_exposure_value":0,"correlated_exposure_value":0}
+    allowed=evaluate(policy,proposal(quantity=0.002,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    position=next(check for check in allowed["checks"] if check["code"]=="POSITION_LIMIT")
+    assert allowed["outcome"]=="AUTHORIZED" and allowed["notional"]==1.0
+    assert position["limit"]==1.0 and "micro-account" in position["detail"]
+    too_large=evaluate(policy,proposal(quantity=0.0022,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    assert too_large["outcome"]=="REJECTED" and "POSITION_LIMIT" in too_large["reason_codes"]
+    ordinary=evaluate(DEFAULT_POLICY,proposal(quantity=0.002,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    assert ordinary["outcome"]=="REJECTED" and "POSITION_LIMIT" in ordinary["reason_codes"]
+    threshold=evaluate(policy,proposal(quantity=0.002,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    assert threshold["outcome"]=="AUTHORIZED"
+    above_pct=evaluate(policy,proposal(quantity=0.0022,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    assert above_pct["outcome"]=="REJECTED" and "POSITION_LIMIT" in above_pct["reason_codes"]
+
 def test_risk_api_auth_persistence_deduplication_and_controls():
     principal=Principal(username="test-operator",session_id="risk",csrf_token="csrf")
     with TestClient(app) as anonymous:assert anonymous.get("/api/risk/status").status_code==401
@@ -60,3 +76,7 @@ def test_strategy_limits_can_only_tighten_global_policy():
         bounded=effective_policy(db,DEFAULT_POLICY,decision.id)
         assert bounded["max_position_pct"]==0.25 and bounded["max_portfolio_exposure_pct"]==5.0 and bounded["max_drawdown_pct"]==4.0
         assert effective_policy(db,{**DEFAULT_POLICY,"max_position_pct":0.1},decision.id)["max_position_pct"]==0.1
+        dividend=StrategyScenario(name=f"Dividend trial {marker}",strategy_type="DIVIDEND_FARM",description="fixture",lifecycle="RESEARCH",parameters={});db.add(dividend);db.flush()
+        dividend_version=StrategyVersion(scenario_id=dividend.id,version=1,specification={"position_sizing":{"max_position_pct":1.0}},checksum=("d"+marker).ljust(64,"0")[:64],created_by="test");db.add(dividend_version);db.flush()
+        dividend_decision=StrategyDecision(version_id=dividend_version.id,symbol="SPY",as_of=NOW,decision="ENTRY",reason_codes=[],proposed_weight_pct=1.0,inputs={});db.add(dividend_decision);db.flush()
+        assert effective_policy(db,DEFAULT_POLICY,dividend_decision.id)["micro_account_trial_eligible"] is True
