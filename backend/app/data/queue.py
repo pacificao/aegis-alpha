@@ -95,7 +95,7 @@ def _discover(db:Session,settings:Settings,now:datetime)->str:
 def _expand_validated(db:Session,symbol:str,now:datetime)->int:
     item=db.scalar(select(Instrument).where(Instrument.symbol==symbol))
     if item:item.active=True;item.metadata_json={**(item.metadata_json or {}),"robinhood_market_data_validated_at":now.isoformat()}
-    jobs=[("get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10),("get_equity_fundamentals",{"symbols":[symbol]},20),("get_earnings_results",{"symbol":symbol},20),("get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},25),("get_option_chains",{"underlying_symbol":symbol},40)]
+    jobs=[("get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10),("get_equity_fundamentals",{"symbols":[symbol]},6),("get_earnings_results",{"symbol":symbol},20),("get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},25),("get_option_chains",{"underlying_symbol":symbol},40)]
     count=0
     for dataset,args,priority in jobs:
         if enqueue(db,"robinhood",dataset,symbol,args,priority,"initial-core"):count+=1

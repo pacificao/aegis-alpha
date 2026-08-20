@@ -26,10 +26,10 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .models import DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
 from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
-from .data.calendar import sessions
+from .data.calendar import market_session, next_sessions, sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .data.queue import queue_status, seed_control_jobs
@@ -348,6 +348,20 @@ def data_records(data_type: str | None = Query(default=None,max_length=40), symb
 def data_calendar(start: date = Query(), end: date = Query(), _: Principal = Depends(current_principal)):
     try: return sessions(start,end)
     except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from None
+
+@app.get("/api/data/dividend-calendar")
+def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    calendar=next_sessions(trading_days);dates={row["session_date"] for row in calendar};start=datetime.combine(datetime.now(UTC).date(),datetime.min.time(),tzinfo=UTC);end=datetime.fromisoformat(calendar[-1]["session_date"]).replace(tzinfo=UTC)+timedelta(days=1)
+    records=db.execute(select(DataRecord,Instrument.symbol,DataProvider.name).join(Instrument,Instrument.id==DataRecord.instrument_id).join(DataProvider,DataProvider.id==DataRecord.provider_id).where(DataRecord.data_type=="CORPORATE_ACTION",DataRecord.event_time>=start,DataRecord.event_time<end).order_by(DataRecord.event_time,Instrument.symbol)).all()
+    selected={}
+    for record,symbol,provider in records:
+        payload=record.payload or {};day=str(payload.get("ex_dividend_date") or record.event_time.date().isoformat())
+        if day not in dates or payload.get("action")!="DIVIDEND":continue
+        key=(symbol,day);candidate={"id":record.id,"symbol":symbol,"ex_dividend_date":day,"amount":payload.get("dividend_per_share",payload.get("amount")),"payment_frequency":payload.get("payment_frequency") or payload.get("frequency"),"payment_date":payload.get("payment_date") or payload.get("payable_date"),"annual_yield_pct":payload.get("annual_yield_pct"),"provider":provider.upper(),"coverage":payload.get("coverage","HISTORICAL_EVENT"),"quality_status":record.quality_status}
+        if key not in selected or provider=="robinhood":selected[key]=candidate
+    by_day={day:[] for day in dates}
+    for event in selected.values():by_day[event["ex_dividend_date"]].append(event)
+    return {"sessions":[{**row,"events":sorted(by_day[row["session_date"]],key=lambda item:item["symbol"])} for row in calendar],"event_count":len(selected),"primary_provider":"ROBINHOOD","enrichment_providers":["ALPHA_VANTAGE","ALPACA"],"trading":"DISABLED"}
 
 @app.post("/api/data/robinhood/ingest")
 def robinhood_data_ingest(payload: RobinhoodDataIngestRequest, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):

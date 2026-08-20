@@ -35,3 +35,12 @@ def market_session(day: date) -> dict:
 def sessions(start: date, end: date) -> list[dict]:
     if end<start or (end-start).days>370: raise ValueError("Calendar range must be between 0 and 370 days")
     return [market_session(start+timedelta(days=offset)) for offset in range((end-start).days+1)]
+
+def next_sessions(count:int=10,start:date|None=None)->list[dict]:
+    if count<1 or count>31:raise ValueError("Trading-session count must be between 1 and 31")
+    day=start or datetime.now(UTC).astimezone(EASTERN).date();result=[]
+    while len(result)<count:
+        session=market_session(day)
+        if session["is_open"]:result.append(session)
+        day+=timedelta(days=1)
+    return result

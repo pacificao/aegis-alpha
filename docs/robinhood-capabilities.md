@@ -22,3 +22,8 @@ The historical endpoint accepts explicit RFC3339 ranges, split-adjusted daily ba
 Robinhood is preferred for broker truth, current portfolio state, real-time quotes, earnings, options, technical snapshots, and available price history. Alpha Vantage remains the independent equity cross-check and the currently validated source for dividend-event history and news; premium Alpha Vantage is useful only when Aegis needs deeper adjusted backfill or bulk history that Robinhood coverage tests cannot satisfy. SEC EDGAR remains authoritative for filings/company facts; FRED remains authoritative for macroeconomic series. Robinhood's documentation does not guarantee multi-decade bulk-universe depth, point-in-time constituent history, delisted-security coverage, or backtest redistribution rights, so it is not the sole research archive.
 
 Official inventory: https://robinhood.com/us/en/support/articles/trading-with-your-agent/
+
+
+## Primary-source policy
+
+Official Robinhood reads are the primary operational source for quotes, available history, fundamentals, financials, earnings, technicals, options and current dividend schedules. Alpha Vantage and Alpaca are enrichment and independent-validation sources, not substitutes for broker truth. Historical dividend-event depth, news, complete listings and cross-provider discrepancy checks remain intentionally multi-source.

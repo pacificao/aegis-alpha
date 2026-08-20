@@ -246,3 +246,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - Decoupled official Robinhood collection from Alpha Vantage enrichment. A quarterly rolling one-year official earnings-calendar sweep discovers reporting equities, queues official Robinhood quote validation first, and expands successful symbols into price history, fundamentals, earnings, financials and option metadata. Alpha Vantage dividends, fundamentals and news remain quota-aware independent enrichment.
 - The first live sweep completed all 13 bounded 31-day windows, discovered 5,767 symbols and queued 5,767 validations. Robinhood does not expose a complete tradable-security catalog, so ETFs and non-reporting securities continue to arrive through Alpha Vantage listing discovery. Trading remained disabled.
+
+
+## Robinhood-primary dividend calendar (2026-08-20)
+
+- Robinhood is now the primary operational market-data source. Its official fundamentals schedule is normalized into provider-attributed dividend corporate actions with per-share amount, frequency, ex-date, record date and payable date. Fundamentals run ahead of deep history after quote validation; Alpha Vantage and future Alpaca remain enrichment and independent verification sources.
+- Added a research-only Dividend Calendar under Scenarios showing verified ex-dividend events for the next 10 NYSE trading sessions, including empty sessions rather than fabricating candidates. Robinhood wins same-symbol/date source precedence. The calendar has no strategy, risk, approval or execution capability; trading remains disabled.
