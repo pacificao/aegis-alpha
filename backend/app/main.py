@@ -38,6 +38,7 @@ from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
 from .execution.service import reconcile as reconcile_execution
 from .intelligence import validate_artifact, consensus
+from .ai_verifier import CodexVerifier,VerifierUnavailable
 from .paper.service import execute as execute_paper, snapshot as paper_snapshot
 from .broker_sync.service import synchronize as synchronize_broker, serialize_snapshot
 
@@ -471,7 +472,18 @@ def serialize_intelligence(row: IntelligenceArtifact, reviews: list[Intelligence
 @app.get("/api/intelligence/status")
 def intelligence_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
     counts=dict(db.execute(select(IntelligenceArtifact.artifact_type,func.count()).group_by(IntelligenceArtifact.artifact_type)).all())
-    return {"artifact_counts":counts,"supported_types":["STRATEGY_CREATION","STRATEGY_CRITIQUE","MARKET_REGIME","NEWS_ANALYSIS","FUNDAMENTAL_ANALYSIS","PARAMETER_RESEARCH","POST_TRADE_REVIEW","ANOMALY_DETECTION","PREMARKET_BRIEFING","POSTMARKET_DIGEST","ATTENTION_ALERT"],"strategy_council":"AVAILABLE","independent_verification":"AVAILABLE","model_provider":"PROVIDER_NEUTRAL","risk_authority":False,"execution_available":False,"trading":"DISABLED"}
+    return {"artifact_counts":counts,"supported_types":["STRATEGY_CREATION","STRATEGY_CRITIQUE","MARKET_REGIME","NEWS_ANALYSIS","FUNDAMENTAL_ANALYSIS","PARAMETER_RESEARCH","POST_TRADE_REVIEW","ANOMALY_DETECTION","PREMARKET_BRIEFING","POSTMARKET_DIGEST","ATTENTION_ALERT"],"strategy_council":"AVAILABLE","independent_verification":"CONFIGURED" if settings.codex_verifier_enabled and bool(settings.openai_api_key) else "WAITING_FOR_CREDENTIALS","codex_model":settings.codex_verifier_model,"model_provider":"PROVIDER_NEUTRAL","risk_authority":False,"execution_available":False,"trading":"DISABLED"}
+
+@app.get("/api/intelligence/evidence/{symbol}")
+def intelligence_evidence(symbol:str,limit:int=Query(default=50,ge=1,le=100),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    normalized=symbol.strip().upper()
+    if not normalized or len(normalized)>16 or not normalized.replace(".","").replace("-","").isalnum():raise HTTPException(status_code=422,detail="Invalid evidence symbol")
+    allowed={"OHLCV","QUOTE","FUNDAMENTAL","CORPORATE_ACTION","NEWS","BROKER_OHLCV","BROKER_FUNDAMENTAL","BROKER_FINANCIAL","BROKER_TECHNICAL","BROKER_EARNINGS","BROKER_QUOTE","BROKER_OPTION","BROKER_OPTION_QUOTE","ECONOMIC"}
+    rows=db.execute(select(DataRecord,Instrument.symbol).join(Instrument,DataRecord.instrument_id==Instrument.id).where(Instrument.symbol==normalized,DataRecord.quality_status!="REJECTED",DataRecord.data_type.in_(allowed)).order_by(DataRecord.event_time.desc()).limit(limit)).all()
+    records=[{"id":record.id,"symbol":record_symbol,"data_type":record.data_type,"event_time":record.event_time,"observed_at":record.observed_at,"quality_status":record.quality_status,"source_url":record.source_url,"checksum":record.checksum,"payload":record.payload} for record,record_symbol in rows]
+    bundle={"symbol":normalized,"records":records,"record_count":len(records),"source_types":sorted({r["data_type"] for r in records}),"untrusted_event_inputs":any(r["data_type"]=="NEWS" for r in records),"authority":"EVIDENCE_ONLY","risk_authorized":False,"executable":False,"trading":"DISABLED"}
+    bundle["checksum"]=canonical_checksum({"symbol":normalized,"records":[{"id":r["id"],"checksum":r["checksum"]} for r in records]})
+    return bundle
 
 @app.post("/api/intelligence/artifacts",status_code=201)
 def create_intelligence_artifact(payload:IntelligenceArtifactCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
@@ -493,10 +505,26 @@ def create_intelligence_review(artifact_id:int,payload:IntelligenceReviewCreate,
     artifact=db.get(IntelligenceArtifact,artifact_id)
     if artifact is None:raise HTTPException(status_code=404,detail="Intelligence artifact not found")
     if payload.evidence_checksum!=artifact.checksum:raise HTTPException(status_code=409,detail="Review evidence checksum does not match immutable artifact")
+    if payload.reviewer.lower().startswith(("codex:","aegis:")):raise HTTPException(status_code=422,detail="Reserved verifier identity")
     if db.scalar(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id,IntelligenceReview.reviewer==payload.reviewer)) is not None:raise HTTPException(status_code=409,detail="Reviewer already assessed this artifact")
     row=IntelligenceReview(artifact_id=artifact_id,**payload.model_dump(),independent=True,created_by=principal.username);db.add(row);db.flush();reviews=db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id)).all();governance,reason=consensus(artifact,reviews);artifact.status=governance;artifact.human_review_required=governance!="ELIGIBLE_FOR_RISK_REVIEW"
     db.add(DevelopmentActivity(actor=principal.username,action="intelligence_review_recorded",entity_type="intelligence_artifact",entity_id=artifact.id,detail=f"reviewer={row.reviewer}; verdict={row.verdict}; governance={governance}; reason={reason}; risk_authorized=false; trading=DISABLED"));db.commit();db.refresh(artifact)
     return serialize_intelligence(artifact,db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact_id).order_by(IntelligenceReview.created_at)).all())
+
+@app.post("/api/intelligence/artifacts/{artifact_id}/verify/codex")
+def verify_intelligence_with_codex(artifact_id:int,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    if not settings.codex_verifier_enabled:raise HTTPException(status_code=409,detail="Codex verifier is disabled")
+    artifact=db.get(IntelligenceArtifact,artifact_id)
+    if artifact is None:raise HTTPException(status_code=404,detail="Intelligence artifact not found")
+    reviewer=f"codex:{settings.codex_verifier_model}"
+    if db.scalar(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact.id,IntelligenceReview.reviewer==reviewer)):raise HTTPException(status_code=409,detail="Codex already reviewed this immutable artifact")
+    package={"artifact_type":artifact.artifact_type,"subject":artifact.subject,"thesis":artifact.thesis,"recommendation":artifact.recommendation,"confidence":artifact.confidence,"evidence":artifact.evidence,"analysis":artifact.analysis,"checksum":artifact.checksum}
+    try:result=CodexVerifier(settings.openai_api_key,settings.codex_verifier_model).review(package)
+    except VerifierUnavailable as exc:raise HTTPException(status_code=503,detail=str(exc)) from None
+    except Exception:raise HTTPException(status_code=502,detail="Codex verifier failed safely") from None
+    if artifact.recommendation in {"BUY","SELL","PAUSE","ESCALATE"} and result["verdict"]=="APPROVE":result["verdict"]="ABSTAIN";result["rationale"]="High-impact recommendation requires human approval. "+result["rationale"]
+    row=IntelligenceReview(artifact_id=artifact.id,reviewer=reviewer,verdict=result["verdict"],confidence=result["confidence"],rationale=result["rationale"],evidence_checksum=artifact.checksum,independent=True,created_by="codex-verifier");db.add(row);db.flush();reviews=db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact.id)).all();governance,reason=consensus(artifact,reviews);artifact.status=governance;artifact.human_review_required=governance!="ELIGIBLE_FOR_RISK_REVIEW";db.add(DevelopmentActivity(actor=principal.username,action="codex_intelligence_review_recorded",entity_type="intelligence_artifact",entity_id=artifact.id,detail=f"verdict={row.verdict}; governance={governance}; checksum_bound=true; risk_authorized=false; trading=DISABLED"));db.commit()
+    return serialize_intelligence(artifact,db.scalars(select(IntelligenceReview).where(IntelligenceReview.artifact_id==artifact.id).order_by(IntelligenceReview.created_at)).all())
 
 @app.get("/api/simulator/status")
 def simulator_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):

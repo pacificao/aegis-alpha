@@ -38,3 +38,6 @@ The paper domain consumes only persisted RiskEngine authorizations and normalize
 ## Aegis Gateway (Phase 9)
 
 The Aegis backend can request one bounded read-only account snapshot from the isolated gateway. The gateway discovers official schemas, invokes only exact account/portfolio/position/order-history reads, hashes private identifiers, and returns no OAuth material. Aegis normalizes, reconciles, checksums, persists, and projects the immutable snapshot. Neither side exposes generic MCP invocation or order/review/cancel methods. Phase 9 broker history remains separate from Phase 8 paper state and Phase 6 risk authorization.
+
+
+The multi-source evidence boundary projects approved normalized records into bounded checksummed symbol bundles for Intelligence consumers. News and future social signals are marked untrusted event inputs. The Codex verifier is an outbound, no-tool, non-executing reviewer; its credential is injected only into the backend runtime and its output can never set `risk_authorized` or call execution.
