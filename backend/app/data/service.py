@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings
 from ..models import DataProvider, DataQualityIssue, DataRecord, IngestionRun, Instrument
-from .providers import AlphaVantageProvider, FredProvider, NormalizedItem, ProviderError, SecEdgarProvider
+from .providers import AlphaVantageProvider, FredProvider, NormalizedItem, ProviderError, SecEdgarProvider, utc
 from .quality import checksum, validate
 
 def _safe_error(exc:Exception)->str:
@@ -103,8 +103,15 @@ def ingest_robinhood(db: Session, settings: Settings, tool: str, arguments: dict
         if response.get("status")=="ERROR" or "data" not in response: raise ProviderError("Robinhood market-data gateway is unavailable")
         observed=datetime.now(UTC)
         target=symbol or "GLOBAL"
-        item=NormalizedItem(ROBINHOOD_TYPES[tool],f"{tool}:{target}:{observed.isoformat()}",observed,"snapshot",{"tool":tool,"arguments":arguments,"result":response["data"]},"https://agent.robinhood.com/mcp/trading")
-        accepted,rejected=store(db,provider,symbol,[item])
+        items=[NormalizedItem(ROBINHOOD_TYPES[tool],f"{tool}:{target}:{observed.isoformat()}",observed,"snapshot",{"tool":tool,"arguments":arguments,"result":response["data"]},"https://agent.robinhood.com/mcp/trading")]
+        if tool=="get_equity_fundamentals" and symbol:
+            outer=response["data"];inner=outer.get("data",outer) if isinstance(outer,dict) else {};rows=inner.get("results",[]) if isinstance(inner,dict) else []
+            for row in rows:
+                ex_date=row.get("ex_dividend_date") if isinstance(row,dict) else None
+                if str(row.get("symbol","")).upper()!=symbol.upper() or not ex_date:continue
+                payload={"action":"DIVIDEND","amount":row.get("dividend_per_share"),"dividend_per_share":row.get("dividend_per_share"),"annual_yield_pct":row.get("dividend_yield"),"payment_frequency":row.get("distribution_frequency"),"ex_dividend_date":ex_date,"record_date":row.get("record_date"),"payment_date":row.get("payable_date"),"source_provider":"ROBINHOOD","coverage":"CURRENT_SCHEDULE"}
+                items.append(NormalizedItem("CORPORATE_ACTION",f"{symbol}:robinhood:dividend:{ex_date}",utc(ex_date),"event",payload,"https://agent.robinhood.com/mcp/trading"))
+        accepted,rejected=store(db,provider,symbol,items)
         run.status="COMPLETE"; run.accepted=accepted; run.rejected=rejected; run.detail=f"Accepted {accepted}; rejected {rejected}"
         provider.last_success_at=observed; provider.last_error=""; provider.credential_status="CONFIGURED"
     except Exception as exc:
