@@ -20,6 +20,7 @@ def test_queue_is_idempotent_and_never_enables_trading():
         first=enqueue(db,"robinhood","get_equity_quotes",symbol,{"symbols":[symbol]},5,"test");second=enqueue(db,"robinhood","get_equity_quotes",symbol,{"symbols":[symbol]},5,"test");db.commit()
         assert first is not None and second is None
         status=queue_status(db);assert status["trading"]=="DISABLED" and status["counts"]["QUEUED"]>=1
+        assert status["catalog_instruments"]>=status["active_validated_instruments"] and "next_job_at" in status
     finally:db.close()
 
 def test_alpha_quota_defers_without_calling_provider():

@@ -14,8 +14,15 @@ def _number(value:object)->float|None:
     try:return float(str(value).replace("\x24","").replace(",",""))
     except (TypeError,ValueError):return None
 def _rows(value:object)->list:
-    if isinstance(value,list):return value
+    if isinstance(value,list):
+        rows=[]
+        for item in value:
+            if isinstance(item,dict) and any(key in item for key in ("symbol","ticker","id","order_id","quantity","total_quantity","state","status")):rows.append(item)
+            else:rows.extend(_rows(item))
+        return rows
     if isinstance(value,dict):
+        if "data" in value and isinstance(value["data"],(dict,list)):
+            return _rows(value["data"])
         for key in ("results","items","data","positions","orders","executions","fills"):
             if key in value and isinstance(value[key],list):return value[key]
         return [value]
@@ -103,5 +110,6 @@ def serialize_snapshot(snapshot:BrokerSnapshot|None,connection:str)->dict:
     if snapshot is None:return {"broker":"Robinhood","connection":connection,"mode":"READ_ONLY","holdings_available":False,"snapshot":None,"detail":"No verified read-only broker snapshot is available.","trading":"DISABLED"}
     observed=snapshot.source_observed_at if snapshot.source_observed_at.tzinfo else snapshot.source_observed_at.replace(tzinfo=UTC)
     age=max(0,int((datetime.now(UTC)-observed).total_seconds()))
-    summary={"portfolio_value":_find(snapshot.balances,("total_equity","portfolio_value","equity","total_value")),"buying_power":_find(snapshot.balances,("buying_power","withdrawable_amount")),"cash":_find(snapshot.balances,("cash","cash_available")),"holding_count":sum(len(group.get("records",[])) for group in snapshot.holdings),"order_count":snapshot.reconciliation.get("order_records",0),"fill_count":snapshot.reconciliation.get("fill_records",0)}
-    return {"broker":"Robinhood","connection":connection,"mode":"READ_ONLY","holdings_available":snapshot.status in {"VERIFIED","PARTIAL"},"snapshot":{"id":snapshot.id,"summary":summary,"status":snapshot.status,"account_count":snapshot.account_count,"balances":snapshot.balances,"holdings":snapshot.holdings,"orders":snapshot.orders,"fills":snapshot.fills,"reconciliation":snapshot.reconciliation,"checksum":snapshot.checksum,"observed_at":snapshot.source_observed_at,"age_seconds":age,"stale":age>900},"detail":"Verified immutable broker read; order history is non-executable.","trading":"DISABLED"}
+    holdings=[{**group,"records":_rows(group.get("records",[]))} for group in snapshot.holdings]
+    summary={"portfolio_value":_find(snapshot.balances,("total_equity","portfolio_value","equity","total_value")),"buying_power":_find(snapshot.balances,("buying_power","withdrawable_amount")),"cash":_find(snapshot.balances,("cash","cash_available")),"holding_count":sum(len(group["records"]) for group in holdings),"order_count":snapshot.reconciliation.get("order_records",0),"fill_count":snapshot.reconciliation.get("fill_records",0)}
+    return {"broker":"Robinhood","connection":connection,"mode":"READ_ONLY","holdings_available":snapshot.status in {"VERIFIED","PARTIAL"},"snapshot":{"id":snapshot.id,"summary":summary,"status":snapshot.status,"account_count":snapshot.account_count,"balances":snapshot.balances,"holdings":holdings,"orders":snapshot.orders,"fills":snapshot.fills,"reconciliation":snapshot.reconciliation,"checksum":snapshot.checksum,"observed_at":snapshot.source_observed_at,"age_seconds":age,"stale":age>900},"detail":"Verified immutable broker read; order history is non-executable.","trading":"DISABLED"}
