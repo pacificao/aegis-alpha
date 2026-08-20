@@ -69,6 +69,8 @@ def test_quality_checks_and_deterministic_checksum():
     codes={code for _,code,_ in validate("OHLCV",datetime.now(UTC),invalid)}
     assert {"OHLC_RANGE","NEGATIVE_VOLUME"}.issubset(codes)
     assert checksum("QUOTE","A",when,payload)==checksum("QUOTE","A",when,{"price":10.0})
+    future=datetime.now(UTC)+timedelta(days=10)
+    assert not any(code=="FUTURE_TIMESTAMP" for _,code,_ in validate("CORPORATE_ACTION",future,{"action":"DIVIDEND"}))
 
 def test_market_calendar_handles_weekends_and_holidays():
     assert market_session(date(2026,7,3))["is_open"] is False
