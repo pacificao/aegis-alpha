@@ -95,6 +95,22 @@ class AlphaVantageProvider(HttpProvider):
         if not rows or "symbol" not in rows[0]: raise ProviderError("Active listing feed is missing")
         return rows
 
+class NasdaqTraderProvider(HttpProvider):
+    name="nasdaq_trader"
+    sources=(("https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt","Symbol","NASDAQ"),("https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt","ACT Symbol","OTHER"))
+    def directory(self) -> list[dict[str,str]]:
+        found={}
+        for url,symbol_field,default_exchange in self.sources:
+            response=self.client.get(url,headers={"User-Agent":"Aegis Alpha security-universe/1.0 admin@pacificao.com"});response.raise_for_status()
+            for row in csv.DictReader(io.StringIO(response.text),delimiter="|"):
+                symbol=(row.get(symbol_field) or "").strip().upper()
+                if not symbol or symbol.startswith("FILE CREATION TIME") or row.get("Test Issue")!="N":continue
+                name=(row.get("Security Name") or "").strip();upper=name.upper();etf=row.get("ETF")=="Y"
+                asset_type="ETF" if etf else "WARRANT" if "WARRANT" in upper else "PREFERRED" if "PREFERRED" in upper or " PFD" in upper else "ADR" if " ADR" in upper or "DEPOSITARY SHARES" in upper else "CEF" if "CLOSED END" in upper else "EQUITY"
+                found[symbol]={"symbol":symbol,"name":name,"exchange":row.get("Exchange") or default_exchange,"asset_type":asset_type,"source_url":url}
+        if not found:raise ProviderError("Official Nasdaq Trader symbol directory is empty")
+        return list(found.values())
+
 class FredProvider(HttpProvider):
     name="fred"
     base_url="https://api.stlouisfed.org/fred/series/observations"
