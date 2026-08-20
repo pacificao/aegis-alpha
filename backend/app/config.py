@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     default_market_symbols: str = "SPY,QQQ,AAPL"
     openai_api_key: str = ""
     codex_verifier_enabled: bool = False
-    codex_verifier_model: str = "gpt-5.6-sol"
+    codex_verifier_model: str = "gpt-5-mini"
     @field_validator("aegis_trading_enabled")
     @classmethod
     def trading_must_remain_disabled(cls, value: bool) -> bool:
