@@ -10,7 +10,8 @@ logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s ingesti
 def main()->None:
     parser=argparse.ArgumentParser();parser.add_argument("--once",action="store_true");args=parser.parse_args();settings=get_settings()
     if not settings.ingestion_worker_enabled and not args.once:
-        logging.info("disabled");return
+        logging.info("disabled")
+        while True:time.sleep(settings.ingestion_worker_interval_seconds)
     while True:
         db=SessionLocal()
         try:logging.info("batch=%s",run_batch(db,settings))
