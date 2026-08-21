@@ -285,3 +285,13 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - Corrected calendar semantics: the prior trading session is an eligible entry date, not a planned trade. `PLANNED BUY` and its reserved amount appear only when a matching active, durable capital reservation exists; all other events explicitly state `NO BUY PLANNED` with a deterministic research recommendation.
 - Added a conservative 1–100 historical safety score (higher is historically safer) using evidence depth, recovery probability, median and 90th-percentile recovery time, and maximum observed drawdown. LOW/MEDIUM/HIGH confidence exposes data maturity. The score cannot authorize a trade and remains subordinate to strategy evaluation, deterministic RiskEngine authorization, and execution controls. Trading remains DISABLED.
+
+
+## Dashboard guardrail clarity (2026-08-20)
+
+- Added concise explanations for each decision guardrail and linked the Upcoming Candidates evidence tile directly to the Dividend Calendar.
+
+
+## Robinhood coverage denominator correction (2026-08-20)
+
+- Corrected Dividend Calendar coverage to count fundamentals only for the active Robinhood-validated universe. Inactive catalog records can no longer produce percentages above 100% or a false COMPLETE state.

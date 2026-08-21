@@ -397,7 +397,7 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
             event["recommendation"]="PLANNED_BUY";event["recommendation_reason"]="Capital is reserved; market-day revalidation and deterministic RiskEngine authorization remain required."
         by_day[event["ex_dividend_date"]].append(event)
     validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0)
-    covered=int(db.scalar(select(func.count(func.distinct(DataRecord.instrument_id))).where(DataRecord.data_type=="BROKER_FUNDAMENTAL")) or 0)
+    covered=int(db.scalar(select(func.count(func.distinct(DataRecord.instrument_id))).join(Instrument,Instrument.id==DataRecord.instrument_id).where(DataRecord.data_type=="BROKER_FUNDAMENTAL",Instrument.active.is_(True))) or 0)
     return {"sessions":[{**row,"events":sorted(by_day[row["session_date"]],key=lambda item:item["symbol"])} for row in calendar],"event_count":len(selected),"primary_provider":"ROBINHOOD","enrichment_providers":["ALPHA_VANTAGE","ALPACA"],"coverage":{"fundamentals_covered":covered,"validated_instruments":validated,"percent":round(covered/validated*100,1) if validated else 0,"status":"COMPLETE" if validated and covered>=validated else "BACKFILLING"},"trading":"DISABLED"}
 
 @app.post("/api/data/robinhood/ingest")
