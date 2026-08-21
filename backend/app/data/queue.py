@@ -109,24 +109,30 @@ def _discover(db:Session,settings:Settings,now:datetime)->str:
     except Exception as exc:
         db.rollback();run=db.get(IngestionRun,run.id);provider=db.get(DataProvider,provider.id);run.status="ERROR";run.detail=type(exc).__name__;run.completed_at=now;provider.last_error=type(exc).__name__;db.commit();raise
 
-def _expand_validated(db:Session,symbol:str,now:datetime)->int:
+def _expand_validated(db:Session,settings:Settings,symbol:str,now:datetime)->int:
     item=db.scalar(select(Instrument).where(Instrument.symbol==symbol))
     if item:item.active=True;item.metadata_json={**(item.metadata_json or {}),"robinhood_market_data_validated_at":now.isoformat()}
     jobs=[("get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10),("get_equity_fundamentals",{"symbols":[symbol]},4),("get_earnings_results",{"symbol":symbol},20),("get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},25),("get_option_chains",{"underlying_symbol":symbol},40)]
     count=0
     for dataset,args,priority in jobs:
         if enqueue(db,"robinhood",dataset,symbol,args,priority,"initial-core"):count+=1
+    if settings.alpaca_data_enabled:
+        for dataset,priority in (("dividends",3),("historical",12)):
+            if enqueue(db,"alpaca",dataset,symbol,{},priority,"initial-core"):count+=1
     for dataset,priority in (("dividends",60),("fundamentals",70),("news",90)):
         if enqueue(db,"alpha_vantage",dataset,symbol,{},priority,"initial-independent"):count+=1
     return count
 
-def schedule_freshness(db:Session,now:datetime)->int:
+def schedule_freshness(db:Session,now:datetime,settings:Settings|None=None)->int:
+    settings=settings or Settings()
     day=now.date().isoformat();iso=now.isocalendar();week=f"{iso.year}-W{iso.week:02d}";month=day[:7];count=0
     symbols=db.scalars(select(Instrument.symbol).where(Instrument.active.is_(True),Instrument.symbol.not_like("%,%"))).all()
-    for symbol in symbols:
-        jobs=[("robinhood","get_equity_quotes",{"symbols":[symbol]},5,day),("robinhood","get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10,week),("robinhood","get_earnings_results",{"symbol":symbol},20,week),("robinhood","get_equity_fundamentals",{"symbols":[symbol]},4,week),("robinhood","get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},30,month),("robinhood","get_option_chains",{"underlying_symbol":symbol},45,week),("alpha_vantage","dividends",{},60,month),("alpha_vantage","fundamentals",{},70,month)]
+    for index,symbol in enumerate(symbols,1):
+        jobs=[("alpaca","dividends",{},3,month),("alpaca","historical",{},12,month),("robinhood","get_equity_quotes",{"symbols":[symbol]},5,day),("robinhood","get_equity_historicals",{"symbols":[symbol],"start_time":"2016-01-01T00:00:00Z","interval":"day","bounds":"regular","adjustment_type":"split"},10,week),("robinhood","get_earnings_results",{"symbol":symbol},20,week),("robinhood","get_equity_fundamentals",{"symbols":[symbol]},4,week),("robinhood","get_financials",{"symbols":[symbol],"period":"quarterly","limit":40},30,month),("robinhood","get_option_chains",{"underlying_symbol":symbol},45,week),("alpha_vantage","dividends",{},60,month),("alpha_vantage","fundamentals",{},70,month)]
         for provider,dataset,args,priority,bucket in jobs:
+            if provider=="alpaca" and not settings.alpaca_data_enabled:continue
             if enqueue(db,provider,dataset,symbol,args,priority,bucket):count+=1
+        if index%50==0:db.commit()
     db.commit();return count
 
 def process_one(db:Session,settings:Settings,job:IngestionJob,now:datetime|None=None)->str:
@@ -136,16 +142,19 @@ def process_one(db:Session,settings:Settings,job:IngestionJob,now:datetime|None=
     job.status="RUNNING";job.started_at=now;job.attempts+=1;db.commit()
     try:
         if job.provider=="aegis" and job.dataset=="official_symbol_directory":detail=_discover_official_directory(db,now)
-        elif job.provider=="aegis" and job.dataset=="freshness_schedule":detail=f"Queued {schedule_freshness(db,now)} due freshness jobs"
+        elif job.provider=="aegis" and job.dataset=="freshness_schedule":detail=f"Queued {schedule_freshness(db,now,settings)} due freshness jobs"
         elif job.provider=="aegis" and job.dataset=="robinhood_calendar_discovery":detail=_discover_robinhood_calendar(db,settings,now)
         elif job.provider=="alpha_vantage" and job.dataset=="listing_status":detail=_discover(db,settings,now)
+        elif job.provider=="alpaca":
+            run=ingest(db,settings,"alpaca",job.dataset,job.symbol);detail=run.detail
+            if run.status!="COMPLETE":raise ProviderError(detail)
         elif job.provider=="alpha_vantage":
             run=ingest(db,settings,"alpha_vantage",job.dataset,job.symbol);detail=run.detail
             if run.status!="COMPLETE":raise ProviderError(detail)
         elif job.provider=="robinhood":
             run=ingest_robinhood(db,settings,job.dataset,job.arguments,job.symbol);detail=run.detail
             if run.status!="COMPLETE":raise ProviderError(detail)
-            if job.dataset=="get_equity_quotes" and job.symbol:_expand_validated(db,job.symbol,now)
+            if job.dataset=="get_equity_quotes" and job.symbol:_expand_validated(db,settings,job.symbol,now)
         else:raise ProviderError("Unsupported queued provider")
         job=db.get(IngestionJob,job.id);job.status="COMPLETE";job.detail=detail[:500];job.completed_at=datetime.now(UTC);db.commit();return "COMPLETE"
     except Exception as exc:
