@@ -26,10 +26,10 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
-from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
+from .models import DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, PlannedTradeCancel, PlannedTradeCreate, PlannedTradeRevalidate, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
-from .data.calendar import dividend_entry_plan, market_session, next_sessions, sessions
+from .data.calendar import EASTERN, dividend_entry_plan, market_session, next_sessions, sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .data.queue import queue_status, seed_control_jobs
@@ -238,6 +238,7 @@ def portfolio(_: Principal = Depends(current_principal), db: Session = Depends(g
     result = serialize_snapshot(snapshot, broker.get("status", "ERROR"))
     run = db.scalar(select(BrokerSyncRun).order_by(BrokerSyncRun.started_at.desc()))
     result["latest_sync"] = {"id":run.id,"status":run.status,"attempts":run.attempts,"error_code":run.error_code,"completed_at":run.completed_at} if run else None
+    result["capital"] = planned_capacity(db)
     return result
 
 @app.post("/api/broker/robinhood/sync")
@@ -352,7 +353,7 @@ def data_calendar(start: date = Query(), end: date = Query(), _: Principal = Dep
 
 @app.get("/api/data/dividend-calendar")
 def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
-    calendar=next_sessions(trading_days);dates={row["session_date"] for row in calendar};start=datetime.combine(datetime.now(UTC).date(),datetime.min.time(),tzinfo=UTC);end=datetime.fromisoformat(calendar[-1]["session_date"]).replace(tzinfo=UTC)+timedelta(days=1)
+    calendar=next_sessions(trading_days);dates={row["session_date"] for row in calendar};start=datetime.combine(datetime.now(EASTERN).date(),datetime.min.time(),tzinfo=UTC);end=datetime.fromisoformat(calendar[-1]["session_date"]).replace(tzinfo=UTC)+timedelta(days=1)
     records=db.execute(select(DataRecord,Instrument.symbol,DataProvider.name).join(Instrument,Instrument.id==DataRecord.instrument_id).join(DataProvider,DataProvider.id==DataRecord.provider_id).where(DataRecord.data_type=="CORPORATE_ACTION",DataRecord.event_time>=start,DataRecord.event_time<end,DataRecord.quality_status!="REJECTED").order_by(DataRecord.event_time,Instrument.symbol)).all()
     selected={}
     for record,symbol,provider in records:
@@ -382,7 +383,7 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
             elif row.data_type=="OHLCV":
                 try:bars.setdefault(row.event_time.date(),float(payload.get("adjusted_close",payload["close"])))
                 except (KeyError,TypeError,ValueError):pass
-        evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery_estimate(action_dates,bars,datetime.now(UTC).date())}
+        evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery_estimate(action_dates,bars,datetime.now(EASTERN).date())}
     by_day={day:[] for day in dates}
     for event in selected.values():event.update(evidence.get(event["symbol"],{}));by_day[event["ex_dividend_date"]].append(event)
     validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0)
@@ -594,6 +595,83 @@ def paper_orders(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(cu
         fill=db.scalar(select(PaperFill).where(PaperFill.order_id==order.id));result.append({"id":order.id,"risk_assessment_id":order.risk_assessment_id,"quote_record_id":order.quote_record_id,"symbol":order.symbol,"side":order.side,"quantity":order.quantity,"status":order.status,"reason":order.reason,"fill":{"price":fill.price,"quantity":fill.quantity,"commission":fill.commission,"slippage_bps":fill.slippage_bps,"filled_at":fill.filled_at} if fill else None,"environment":"PAPER","broker_called":False,"executable_live":False,"trading":"DISABLED","created_at":order.created_at})
     return result
 
+
+
+ACTIVE_PLAN_STATUSES={"PLANNED","REVALIDATION_BLOCKED","READY_FOR_FINAL_APPROVAL"}
+
+def _buying_power(db:Session)->float:
+    snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()))
+    if snapshot is None:return 0.0
+    value=serialize_snapshot(snapshot,"CONNECTED")["snapshot"]["summary"].get("buying_power")
+    return max(0.0,float(value or 0))
+
+def planned_capacity(db:Session,exclude_id:int|None=None)->dict:
+    statement=select(func.coalesce(func.sum(PlannedTrade.reserved_notional),0.0)).where(PlannedTrade.status.in_(ACTIVE_PLAN_STATUSES))
+    if exclude_id is not None:statement=statement.where(PlannedTrade.id!=exclude_id)
+    reserved=float(db.scalar(statement) or 0);buying_power=_buying_power(db)
+    return {"buying_power":buying_power,"planned_reservations":reserved,"deployable_cash":max(0.0,buying_power-reserved),"broker_hold_created":False}
+
+def serialize_planned_trade(row:PlannedTrade):
+    return {"id":row.id,"strategy_decision_id":row.strategy_decision_id,"final_risk_assessment_id":row.final_risk_assessment_id,"symbol":row.symbol,"side":row.side,"quantity":row.quantity,"reference_price":row.reference_price,"reserved_notional":row.reserved_notional,"planned_entry_date":row.planned_entry_date,"status":row.status,"rationale":row.rationale,"plan_checksum":row.plan_checksum,"revalidation_detail":row.revalidation_detail,"revalidated_at":row.revalidated_at,"notification_status":row.notification_status,"notification_event":row.notification_event,"notified_at":row.notified_at,"cancellation_reason":row.cancellation_reason,"created_by":row.created_by,"created_at":row.created_at,"executable":False,"broker_called":False,"trading":"DISABLED"}
+
+@app.get("/api/planned-trades")
+def planned_trades(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    rows=db.scalars(select(PlannedTrade).order_by(PlannedTrade.planned_entry_date,PlannedTrade.created_at.desc()).limit(limit)).all()
+    return {"plans":[serialize_planned_trade(x) for x in rows],"capacity":planned_capacity(db),"trading":"DISABLED"}
+
+@app.post("/api/planned-trades",status_code=201)
+def create_planned_trade(payload:PlannedTradeCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    decision=db.get(StrategyDecision,payload.strategy_decision_id)
+    if decision is None:raise HTTPException(status_code=404,detail="Strategy decision not found")
+    if decision.decision!="ENTRY":raise HTTPException(status_code=409,detail="Only a deterministic ENTRY decision may create a planned buy")
+    if payload.planned_entry_date<datetime.now(EASTERN).date():raise HTTPException(status_code=409,detail="Planned entry session is in the past")
+    if not market_session(payload.planned_entry_date)["is_open"]:raise HTTPException(status_code=409,detail="Planned entry date is not an exchange session")
+    if db.scalar(select(PlannedTrade).where(PlannedTrade.strategy_decision_id==decision.id,PlannedTrade.status.in_(ACTIVE_PLAN_STATUSES))):raise HTTPException(status_code=409,detail="Strategy decision already has an active capital reservation")
+    notional=round(payload.quantity*payload.reference_price,2);capacity=planned_capacity(db)
+    if notional>capacity["deployable_cash"]:raise HTTPException(status_code=409,detail="Planned trade exceeds unreserved deployable cash")
+    frozen={"strategy_decision_id":decision.id,"symbol":decision.symbol,"side":"BUY","quantity":payload.quantity,"reference_price":payload.reference_price,"reserved_notional":notional,"planned_entry_date":payload.planned_entry_date.isoformat(),"rationale":payload.rationale,"trading":"DISABLED"}
+    row=PlannedTrade(strategy_decision_id=decision.id,symbol=decision.symbol,side="BUY",quantity=payload.quantity,reference_price=payload.reference_price,reserved_notional=notional,planned_entry_date=payload.planned_entry_date,status="PLANNED",rationale=payload.rationale,plan_checksum=canonical_checksum(frozen),notification_status="PENDING",notification_event="PLAN_CREATED",created_by=principal.username)
+    db.add(row);db.flush();db.add(DevelopmentActivity(actor=principal.username,action="planned_trade_created",entity_type="planned_trade",entity_id=row.id,detail=f"symbol={row.symbol}; reserved_notional={notional:.2f}; entry={row.planned_entry_date}; broker_hold=false; executable=false; trading=DISABLED"));db.commit();db.refresh(row)
+    return {"plan":serialize_planned_trade(row),"capacity":planned_capacity(db)}
+
+@app.post("/api/planned-trades/{plan_id}/cancel")
+def cancel_planned_trade(plan_id:int,payload:PlannedTradeCancel,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(PlannedTrade,plan_id)
+    if row is None:raise HTTPException(status_code=404,detail="Planned trade not found")
+    if row.status not in ACTIVE_PLAN_STATUSES:raise HTTPException(status_code=409,detail="Planned trade no longer reserves capital")
+    row.status="CANCELLED";row.cancellation_reason=payload.reason;row.notification_status="PENDING";row.notification_event="PLAN_CANCELLED"
+    db.add(DevelopmentActivity(actor=principal.username,action="planned_trade_cancelled",entity_type="planned_trade",entity_id=row.id,detail=f"reserved_notional_released={row.reserved_notional:.2f}; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row)
+    return {"plan":serialize_planned_trade(row),"capacity":planned_capacity(db)}
+
+@app.post("/api/planned-trades/{plan_id}/revalidate")
+def revalidate_planned_trade(plan_id:int,payload:PlannedTradeRevalidate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(PlannedTrade,plan_id)
+    if row is None:raise HTTPException(status_code=404,detail="Planned trade not found")
+    if row.status not in {"PLANNED","REVALIDATION_BLOCKED"}:raise HTTPException(status_code=409,detail="Plan is not awaiting entry-session revalidation")
+    today=datetime.now(EASTERN).date()
+    if today!=row.planned_entry_date or not market_session(today)["is_open"]:
+        if today>row.planned_entry_date:row.status="EXPIRED"
+        else:row.status="REVALIDATION_BLOCKED"
+        row.revalidation_detail="ENTRY_SESSION_NOT_CURRENT";row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED";db.commit()
+        raise HTTPException(status_code=409,detail="Revalidation is allowed only on the planned open exchange session")
+    risk=db.get(RiskAssessment,payload.risk_assessment_id)
+    request=risk.request_snapshot if risk else {}
+    now=datetime.now(UTC);policy=db.get(RiskPolicy,risk.policy_id) if risk else None;limits=policy.configuration if policy else {}
+    def timestamp(value):
+        parsed=datetime.fromisoformat(str(value).replace("Z","+00:00")) if value else datetime.min.replace(tzinfo=UTC)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    evidence_fresh=(now-timestamp(request.get("market_data_as_of"))).total_seconds()<=int(limits.get("max_market_data_age_seconds",300))
+    proposal_fresh=(now-timestamp(request.get("proposal_created_at"))).total_seconds()<=int(limits.get("max_proposal_age_seconds",300))
+    valid=bool(risk and risk.risk_authorized and risk.outcome=="AUTHORIZED" and evidence_fresh and proposal_fresh and risk.strategy_decision_id==row.strategy_decision_id and request.get("side")=="BUY" and request.get("symbol")==row.symbol and abs(float(request.get("quantity",0))-row.quantity)<1e-9)
+    if not valid:
+        row.status="REVALIDATION_BLOCKED";row.revalidation_detail="FRESH_MATCHING_RISK_AUTHORIZATION_REQUIRED";row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED";db.commit()
+        raise HTTPException(status_code=409,detail="Fresh matching deterministic RiskEngine authorization is required")
+    capacity=planned_capacity(db,exclude_id=row.id)
+    if row.reserved_notional>capacity["deployable_cash"]:
+        row.status="REVALIDATION_BLOCKED";row.revalidation_detail="DEPLOYABLE_CASH_CHANGED";row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED";db.commit();raise HTTPException(status_code=409,detail="Deployable cash no longer covers the planned trade")
+    row.final_risk_assessment_id=risk.id;row.status="READY_FOR_FINAL_APPROVAL";row.revalidated_at=datetime.now(UTC);row.revalidation_detail="ENTRY_SESSION_AND_RISK_REVALIDATED";row.notification_status="PENDING";row.notification_event="READY_FOR_FINAL_APPROVAL"
+    db.add(DevelopmentActivity(actor=principal.username,action="planned_trade_revalidated",entity_type="planned_trade",entity_id=row.id,detail=f"risk_assessment={risk.id}; human_confirmation_required=true; executable=false; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row)
+    return {"plan":serialize_planned_trade(row),"capacity":planned_capacity(db),"order_submitted":False}
 
 def serialize_controlled_intent(row:ControlledTradeIntent):
     return {"id":row.id,"risk_assessment_id":row.risk_assessment_id,"strategy_decision_id":row.strategy_decision_id,"symbol":row.symbol,"side":row.side,"quantity":row.quantity,"order_type":row.order_type,"limit_price":row.limit_price,"status":row.status,"intent_checksum":row.intent_checksum,"expires_at":row.expires_at,"approved_by":row.approved_by,"approved_at":row.approved_at,"rejection_reason":row.rejection_reason,"human_approval_required":row.status=="PROPOSED","executable":False,"broker_called":False,"trading":"DISABLED","created_by":row.created_by,"created_at":row.created_at}
