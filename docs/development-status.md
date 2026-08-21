@@ -295,3 +295,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Robinhood coverage denominator correction (2026-08-20)
 
 - Corrected Dividend Calendar coverage to count fundamentals only for the active Robinhood-validated universe. Inactive catalog records can no longer produce percentages above 100% or a false COMPLETE state.
+
+
+## Ticker-completion ingestion cohorts (2026-08-21)
+
+- Changed read-only ingestion scheduling from dataset-wide breadth-first ordering to 25-symbol completion cohorts. Within each cohort, Aegis processes a ticker across its queued datasets before advancing, producing strategy-ready securities sooner without changing providers, stored records, quotas, or trading controls.
+- Each batch reserves bounded capacity for global control work and continued Robinhood symbol validation, preventing cohort processing from starving universe discovery. Queue status now exposes `TICKER_COMPLETION_COHORT` and cohort size 25. Existing queued jobs remain intact and restart-safe; trading remains DISABLED.
