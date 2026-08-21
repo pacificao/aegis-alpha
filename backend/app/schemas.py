@@ -99,7 +99,7 @@ class OperatorPreferenceOut(OperatorPreferenceUpdate):
 
 class DataIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: Literal["alpha_vantage", "fred", "sec_edgar"]
+    provider: Literal["alpaca", "alpha_vantage", "fred", "sec_edgar"]
     dataset: Literal["historical", "quote", "fundamentals", "dividends", "news", "economic", "companyfacts"]
     symbol: str | None = Field(default=None, min_length=1, max_length=16, pattern=r"^[A-Za-z0-9.-]+$")
     series_id: str | None = Field(default=None, min_length=1, max_length=32, pattern=r"^[A-Za-z0-9._-]+$")

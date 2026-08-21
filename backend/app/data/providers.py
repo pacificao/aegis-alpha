@@ -95,6 +95,18 @@ class AlphaVantageProvider(HttpProvider):
         if not rows or "symbol" not in rows[0]: raise ProviderError("Active listing feed is missing")
         return rows
 
+class AlpacaDataProvider(HttpProvider):
+    name="alpaca";base_url="https://data.alpaca.markets"
+    def __init__(self,key_id:str,secret_key:str,feed:str="iex",client:httpx.Client|None=None):
+        if not key_id or not secret_key or "CHANGE_ME" in key_id or "CHANGE_ME" in secret_key:raise ProviderError("Alpaca data credentials are not configured")
+        super().__init__(client);self.headers={"APCA-API-KEY-ID":key_id,"APCA-API-SECRET-KEY":secret_key};self.feed=feed
+    def historical_daily(self,symbol:str)->list[NormalizedItem]:
+        data=self.json(f"{self.base_url}/v2/stocks/{symbol}/bars",params={"timeframe":"1Day","start":"2016-01-01T00:00:00Z","limit":"10000","feed":self.feed,"adjustment":"all"},headers=self.headers)
+        return [NormalizedItem("OHLCV",f"{symbol}:alpaca:{row['t']}",utc(row["t"]),"1d",{"open":row["o"],"high":row["h"],"low":row["l"],"close":row["c"],"volume":row["v"],"trade_count":row.get("n"),"vwap":row.get("vw")},f"{self.base_url}/v2/stocks/{symbol}/bars") for row in data.get("bars",[])]
+    def dividends(self,symbol:str)->list[NormalizedItem]:
+        data=self.json(f"{self.base_url}/v1/corporate-actions",params={"symbols":symbol,"types":"cash_dividend","start":"2016-01-01","end":datetime.now(UTC).date().isoformat(),"limit":"1000","data_quality":"complete"},headers=self.headers);rows=data.get("corporate_actions",{}).get("cash_dividends",[])
+        return [NormalizedItem("CORPORATE_ACTION",f"{symbol}:alpaca:dividend:{row['id']}",utc(row["ex_date"]),"event",{"action":"DIVIDEND","amount":row.get("rate"),"dividend_per_share":row.get("rate"),"ex_dividend_date":row.get("ex_date"),"process_date":row.get("process_date"),"special":row.get("special",False),"foreign":row.get("foreign",False),"source_provider":"ALPACA","coverage":"HISTORICAL_COMPLETE"},f"{self.base_url}/v1/corporate-actions") for row in rows if row.get("ex_date")]
+
 class NasdaqTraderProvider(HttpProvider):
     name="nasdaq_trader"
     sources=(("https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt","Symbol","NASDAQ"),("https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt","ACT Symbol","OTHER"))
