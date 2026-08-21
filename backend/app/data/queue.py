@@ -13,6 +13,7 @@ from .providers import AlphaVantageProvider, NasdaqTraderProvider, ProviderError
 from .service import ingest, ingest_robinhood
 
 SYMBOL_RE=re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,14}$")
+COMPLETION_COHORT_SIZE=25
 
 def _key(provider:str,dataset:str,symbol:str|None,bucket:str,arguments:dict)->str:
     digest=hashlib.sha256(json.dumps(arguments,sort_keys=True,separators=(",",":")).encode()).hexdigest()[:16]
@@ -160,15 +161,35 @@ def process_one(db:Session,settings:Settings,job:IngestionJob,now:datetime|None=
     except Exception as exc:
         db.rollback();job=db.get(IngestionJob,job.id);delay=min(1440,2**min(job.attempts,10));job.detail=type(exc).__name__;job.status="FAILED" if job.attempts>=job.max_attempts else "QUEUED";job.available_at=now+timedelta(minutes=delay);job.completed_at=now if job.status=="FAILED" else None;db.commit();return job.status
 
+def _select_batch_jobs(db:Session,now:datetime,limit:int,cohort_size:int=COMPLETION_COHORT_SIZE)->list[IngestionJob]:
+    """Finish small active-symbol cohorts while preserving control and discovery capacity."""
+    ready=(IngestionJob.status=="QUEUED",IngestionJob.available_at<=now)
+    selected=[]
+    control=db.scalars(select(IngestionJob).where(*ready,IngestionJob.symbol.is_(None)).order_by(IngestionJob.priority,IngestionJob.id).limit(min(2,limit))).all()
+    selected.extend(control);remaining=limit-len(selected)
+    if remaining:
+        validation=db.scalars(select(IngestionJob).join(Instrument,Instrument.symbol==IngestionJob.symbol).where(*ready,Instrument.active.is_(False),IngestionJob.provider=="robinhood",IngestionJob.dataset=="get_equity_quotes").order_by(IngestionJob.id).limit(min(1,remaining))).all()
+        selected.extend(validation);remaining=limit-len(selected)
+    if remaining:
+        cohort=db.scalars(select(IngestionJob.symbol).join(Instrument,Instrument.symbol==IngestionJob.symbol).where(*ready,Instrument.active.is_(True)).group_by(IngestionJob.symbol).order_by(func.min(IngestionJob.id)).limit(cohort_size)).all()
+        if cohort:
+            jobs=db.scalars(select(IngestionJob).where(*ready,IngestionJob.symbol.in_(cohort)).order_by(IngestionJob.symbol,IngestionJob.priority,IngestionJob.id).limit(remaining)).all()
+            selected.extend(jobs);remaining=limit-len(selected)
+    if remaining:
+        used=[job.id for job in selected];fallback=select(IngestionJob).where(*ready)
+        if used:fallback=fallback.where(IngestionJob.id.not_in(used))
+        selected.extend(db.scalars(fallback.order_by(IngestionJob.priority,IngestionJob.id).limit(remaining)).all())
+    return selected
+
 def run_batch(db:Session,settings:Settings,limit:int|None=None)->dict:
     now=datetime.now(UTC);seed_control_jobs(db,now);
     for stale in db.scalars(select(IngestionJob).where(IngestionJob.status=="RUNNING",IngestionJob.started_at<now-timedelta(minutes=15))).all():stale.status="QUEUED";stale.available_at=now;stale.detail="Recovered after interrupted worker"
     db.commit();limit=limit or settings.ingestion_worker_batch_size
-    jobs=db.scalars(select(IngestionJob).where(IngestionJob.status=="QUEUED",IngestionJob.available_at<=now).order_by(IngestionJob.priority,IngestionJob.id).limit(limit)).all();results={"COMPLETE":0,"QUEUED":0,"FAILED":0,"DEFERRED_QUOTA":0}
+    jobs=_select_batch_jobs(db,now,limit);results={"COMPLETE":0,"QUEUED":0,"FAILED":0,"DEFERRED_QUOTA":0}
     for job in jobs:results[process_one(db,settings,job,now)]+=1
     results["processed"]=len(jobs);return results
 
 def queue_status(db:Session)->dict:
     counts=dict(db.execute(select(IngestionJob.status,func.count()).group_by(IngestionJob.status)).all());providers=dict(db.execute(select(IngestionJob.provider,func.count()).where(IngestionJob.status=="QUEUED").group_by(IngestionJob.provider)).all());validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0);catalog=int(db.scalar(select(func.count()).select_from(Instrument)) or 0)
     next_job=db.scalar(select(func.min(IngestionJob.available_at)).where(IngestionJob.status=="QUEUED"))
-    return {"counts":counts,"queued_by_provider":providers,"catalog_instruments":catalog,"active_validated_instruments":validated,"pending_robinhood_validation":max(catalog-validated,0),"next_job_at":next_job,"trading":"DISABLED"}
+    return {"counts":counts,"queued_by_provider":providers,"catalog_instruments":catalog,"active_validated_instruments":validated,"pending_robinhood_validation":max(catalog-validated,0),"next_job_at":next_job,"scheduling_mode":"TICKER_COMPLETION_COHORT","cohort_size":COMPLETION_COHORT_SIZE,"trading":"DISABLED"}

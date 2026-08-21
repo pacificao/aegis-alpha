@@ -1,10 +1,10 @@
-from datetime import UTC,datetime
+from datetime import UTC,datetime,timedelta
 from uuid import uuid4
 import httpx
 from sqlalchemy import select
 from app.config import Settings
 from app.data.providers import AlphaVantageProvider,NasdaqTraderProvider
-from app.data.queue import _symbols,enqueue,process_one,queue_status,schedule_freshness
+from app.data.queue import _select_batch_jobs,_symbols,enqueue,process_one,queue_status,schedule_freshness
 from app.database import SessionLocal
 from app.models import DataProvider,IngestionJob,IngestionRun,Instrument
 
@@ -45,10 +45,23 @@ def test_alpha_quota_defers_without_calling_provider():
         assert process_one(db,settings,job,now)=="DEFERRED_QUOTA" and db.get(IngestionJob,job.id).status=="QUEUED"
     finally:db.close()
 
+def test_batch_selection_finishes_active_ticker_cohorts_without_starving_validation():
+    db=SessionLocal();now=datetime.now(UTC);prefix="C"+uuid4().hex[:5].upper()
+    try:
+        for index in range(30):
+            symbol=f"{prefix}{index:02d}";db.add(Instrument(symbol=symbol,active=True));db.flush()
+            enqueue(db,"alpaca","dividends",symbol,{},3,"cohort");enqueue(db,"alpaca","historical",symbol,{},12,"cohort")
+        pending=f"{prefix}X";db.add(Instrument(symbol=pending,active=False));db.flush();enqueue(db,"robinhood","get_equity_quotes",pending,{"symbols":[pending]},5,"validation");db.commit()
+        jobs=_select_batch_jobs(db,now+timedelta(seconds=1),10,cohort_size=25)
+        assert len(jobs)==10 and any(job.symbol==pending for job in jobs)
+        active=[job for job in jobs if job.symbol and job.symbol.startswith(prefix) and job.symbol!=pending]
+        assert len(active)>=2 and len({job.symbol for job in active})<len(active)
+    finally:db.close()
+
 def test_freshness_schedule_is_tiered_and_deduplicated():
     db=SessionLocal();symbol="Q"+uuid4().hex[:8].upper();now=datetime.now(UTC)
     try:
-        db.add(Instrument(symbol=symbol,active=True,metadata_json={"robinhood_market_data_validated_at":now.isoformat()}));db.commit();created=schedule_freshness(db,now);again=schedule_freshness(db,now)
+        db.add(Instrument(symbol=symbol,active=True,metadata_json={"robinhood_market_data_validated_at":now.isoformat()}));db.commit();created=schedule_freshness(db,now,Settings(alpaca_data_enabled=False));again=schedule_freshness(db,now,Settings(alpaca_data_enabled=False))
         jobs=db.scalars(select(IngestionJob).where(IngestionJob.symbol==symbol)).all()
         assert created>=8 and again==0 and {j.provider for j in jobs}=={"robinhood","alpha_vantage"} and "get_equity_historicals" in {j.dataset for j in jobs}
     finally:db.close()
