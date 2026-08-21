@@ -266,3 +266,8 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Entry-session revalidation requires the exact XNYS session plus a fresh, matching AUTHORIZED RiskEngine assessment. Success advances only to final human approval; order submission remains unavailable and trading remains DISABLED.
 - The existing five-minute protected attention monitor emails pending plan creation, cancellation, expiration, blocked-revalidation, and final-approval events, then marks delivery durably. Failed delivery remains pending for retry.
 - Migration `0019_planned_trades` preserves plan, reservation, notification, revalidation, cancellation, checksum, and actor history. Focused tests passed 2/2; canonical backend regression passed 66/66; production Next.js build and TypeScript passed.
+
+## Nginx upstream refresh correction (2026-08-20)
+
+- A deployment recreated frontend/backend containers while leaving Nginx running with their former Docker IP addresses, causing temporary 502 responses despite healthy application containers.
+- Service was restored by restarting Nginx. Compose now declares restart propagation from all proxied dependencies, and acceptance explicitly performs a zero-downtime Nginx configuration reload after container updates.

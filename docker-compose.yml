@@ -150,9 +150,9 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     networks: [edge, broker]
     depends_on:
-      frontend: {condition: service_healthy}
-      backend: {condition: service_healthy}
-      broker-gateway: {condition: service_healthy}
+      frontend: {condition: service_healthy, restart: true}
+      backend: {condition: service_healthy, restart: true}
+      broker-gateway: {condition: service_healthy, restart: true}
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
