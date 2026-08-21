@@ -33,10 +33,10 @@ def seed_roadmap(db: Session) -> None:
     for name,strategy_type,description,parameters in templates:
         if db.scalar(select(StrategyScenario).where(StrategyScenario.name==name)) is None:
             db.add(StrategyScenario(name=name,strategy_type=strategy_type,description=description,lifecycle="RESEARCH",parameters=parameters))
-    providers=(("robinhood","BROKER_MARKET","https://agent.robinhood.com/mcp/trading","BROKER_MANAGED"),("alpha_vantage","MARKET","https://www.alphavantage.co/query","WAITING_FOR_CREDENTIALS"),("fred","ECONOMIC","https://fred.stlouisfed.org/graph/fredgraph.csv","NOT_REQUIRED"),("sec_edgar","FUNDAMENTAL","https://data.sec.gov","NOT_REQUIRED"),("aegis_calendar","CALENDAR","https://www.nyse.com/markets/hours-calendars","NOT_REQUIRED"))
+    providers=(("alpaca","MARKET","https://data.alpaca.markets","WAITING_FOR_CREDENTIALS"),("robinhood","BROKER_MARKET","https://agent.robinhood.com/mcp/trading","BROKER_MANAGED"),("alpha_vantage","MARKET","https://www.alphavantage.co/query","WAITING_FOR_CREDENTIALS"),("fred","ECONOMIC","https://fred.stlouisfed.org/graph/fredgraph.csv","NOT_REQUIRED"),("sec_edgar","FUNDAMENTAL","https://data.sec.gov","NOT_REQUIRED"),("aegis_calendar","CALENDAR","https://www.nyse.com/markets/hours-calendars","NOT_REQUIRED"))
     for provider_name,provider_type,base_url,credential_status in providers:
         if db.scalar(select(DataProvider).where(DataProvider.name==provider_name)) is None:
-            db.add(DataProvider(name=provider_name,provider_type=provider_type,base_url=base_url,credential_status=credential_status,enabled=provider_name in {"robinhood","fred","sec_edgar","aegis_calendar"}))
+            db.add(DataProvider(name=provider_name,provider_type=provider_type,base_url=base_url,credential_status=credential_status,enabled=provider_name in {"alpaca","robinhood","fred","sec_edgar","aegis_calendar"}))
     for symbol,name,cik in (("SPY","SPDR S&P 500 ETF Trust",None),("QQQ","Invesco QQQ Trust",None),("AAPL","Apple Inc.","0000320193")):
         if db.scalar(select(Instrument).where(Instrument.symbol==symbol)) is None:
             db.add(Instrument(symbol=symbol,name=name,cik=cik,metadata_json={}))

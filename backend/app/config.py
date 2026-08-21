@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     broker_gateway_shared_secret: str = Field(default="", min_length=32)
 
     alpha_vantage_api_key: str = ""
+    alpaca_data_enabled: bool = False
+    alpaca_api_key_id: str = ""
+    alpaca_api_secret_key: str = ""
+    alpaca_data_feed: str = "iex"
     fred_api_key: str = ""
     sec_user_agent: str = "Aegis Alpha admin@pacificao.com"
     data_cache_ttl_seconds: int = Field(default=300, ge=30, le=86_400)

@@ -271,3 +271,11 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - A deployment recreated frontend/backend containers while leaving Nginx running with their former Docker IP addresses, causing temporary 502 responses despite healthy application containers.
 - Service was restored by restarting Nginx. Compose now declares restart propagation from all proxied dependencies, and acceptance explicitly performs a zero-downtime Nginx configuration reload after container updates.
+
+## Alpaca data-only acceleration (2026-08-20)
+
+- Validated the operator-provided credentials only against official `data.alpaca.markets` endpoints: historical stock bars and corporate actions both returned HTTP 200. No Alpaca trading/account endpoint was called or implemented.
+- Alpaca is an enrichment provider beneath Robinhood, not a broker or execution adapter. It supplies split/dividend-adjusted daily OHLCV since 2016 and complete cash-dividend corporate actions for recovery research; Alpha Vantage remains an independent slower cross-check.
+- Restart-safe queue jobs prioritize Alpaca dividend history, followed by daily bars, for every Robinhood-validated instrument. Credentials remain server-side and are never accepted by the browser, logged, persisted in PostgreSQL, or committed.
+- Official free Basic entitlement is IEX real-time, historical equities/options since 2016, 15-minute latest-data restriction, and 200 historical calls/minute. Aegis uses bounded REST backfill well below that rate and retains Robinhood as the operational primary source.
+- Production validation accepted 40 SPY dividend events and 1,526 adjusted daily bars with zero rejects. The first live queue interval completed 46 dividend histories and increased symbols meeting the 12-event threshold from 2 to 20; 1,130 dividend jobs remain queued at a bounded 10 jobs per minute.

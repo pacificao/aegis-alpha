@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings
 from ..models import DataProvider, DataQualityIssue, DataRecord, IngestionRun, Instrument
-from .providers import AlphaVantageProvider, FredProvider, NormalizedItem, ProviderError, SecEdgarProvider, utc
+from .providers import AlpacaDataProvider, AlphaVantageProvider, FredProvider, NormalizedItem, ProviderError, SecEdgarProvider, utc
 from .quality import checksum, validate
 
 def _safe_error(exc:Exception)->str:
@@ -19,7 +19,7 @@ def _safe_error(exc:Exception)->str:
     for pattern in patterns:text=re.sub(pattern,r"\1<redacted>",text)
     return text[:500]
 
-PROVIDER_DATASETS={"alpha_vantage":{"historical","quote","fundamentals","dividends","news"},"fred":{"economic"},"sec_edgar":{"companyfacts"}}
+PROVIDER_DATASETS={"alpaca":{"historical","dividends"},"alpha_vantage":{"historical","quote","fundamentals","dividends","news"},"fred":{"economic"},"sec_edgar":{"companyfacts"}}
 
 def instrument(db: Session, symbol: str, cik: str | None = None) -> Instrument:
     normalized=symbol.strip().upper()
@@ -47,6 +47,9 @@ def store(db: Session, provider: DataProvider, symbol: str | None, items: Iterab
     return accepted,rejected
 
 def provider_adapter(settings: Settings, name: str):
+    if name=="alpaca":
+        if not settings.alpaca_data_enabled:raise ProviderError("Alpaca data provider is disabled")
+        return AlpacaDataProvider(settings.alpaca_api_key_id,settings.alpaca_api_secret_key,settings.alpaca_data_feed)
     if name=="alpha_vantage": return AlphaVantageProvider(settings.alpha_vantage_api_key)
     if name=="fred": return FredProvider(settings.fred_api_key)
     if name=="sec_edgar": return SecEdgarProvider(settings.sec_user_agent)

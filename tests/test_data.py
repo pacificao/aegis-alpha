@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.auth import Principal, csrf_protected, current_principal
 from app.data.calendar import calendar_entry_gate, dividend_entry_plan, market_session, next_sessions, sessions
 from app.schemas import RobinhoodDataIngestRequest
-from app.data.providers import AlphaVantageProvider, FredProvider, ProviderError, SecEdgarProvider
+from app.data.providers import AlpacaDataProvider, AlphaVantageProvider, FredProvider, ProviderError, SecEdgarProvider
 from app.data.quality import checksum, validate
 from app.data.service import _safe_error, ingest_robinhood
 from app.config import Settings
@@ -23,6 +23,14 @@ principal=Principal(username="test-operator",session_id="data-test",csrf_token="
 def client_for(payload):
     def handler(request): return httpx.Response(200,json=payload,request=request)
     return httpx.Client(transport=httpx.MockTransport(handler))
+
+def test_alpaca_normalizes_dividends_and_daily_bars():
+    actions={"corporate_actions":{"cash_dividends":[{"id":"ca-1","symbol":"SPY","ex_date":"2026-06-20","process_date":"2026-06-20","rate":1.25,"special":False,"foreign":False}]},"next_page_token":None}
+    item=AlpacaDataProvider("key","secret",client=client_for(actions)).dividends("SPY")[0]
+    assert item.data_type=="CORPORATE_ACTION" and item.payload["amount"]==1.25 and item.payload["source_provider"]=="ALPACA"
+    bars={"bars":[{"t":"2026-08-17T04:00:00Z","o":100,"h":104,"l":99,"c":103,"v":12345,"n":100,"vw":102.5}],"next_page_token":None}
+    bar=AlpacaDataProvider("key","secret",client=client_for(bars)).historical_daily("SPY")[0]
+    assert bar.data_type=="OHLCV" and bar.payload["close"]==103 and bar.payload["vwap"]==102.5
 
 def test_alpha_vantage_normalizes_daily_history():
     payload={"Time Series (Daily)":{"2026-08-17":{"1. open":"100","2. high":"104","3. low":"99","4. close":"103","5. volume":"12345"}}}
@@ -52,7 +60,7 @@ def test_official_fred_and_sec_normalization():
     assert sec[0].data_type=="FUNDAMENTAL" and "CIK0000320193" in sec[0].external_id
 
 def test_provider_credentials_fail_closed():
-    for factory in (lambda:AlphaVantageProvider(""),lambda:SecEdgarProvider("Aegis Alpha")):
+    for factory in (lambda:AlpacaDataProvider("",""),lambda:AlphaVantageProvider(""),lambda:SecEdgarProvider("Aegis Alpha")):
         try: factory(); assert False
         except ProviderError: pass
 
