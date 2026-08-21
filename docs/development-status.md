@@ -301,3 +301,8 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - Changed read-only ingestion scheduling from dataset-wide breadth-first ordering to 25-symbol completion cohorts. Within each cohort, Aegis processes a ticker across its queued datasets before advancing, producing strategy-ready securities sooner without changing providers, stored records, quotas, or trading controls.
 - Each batch reserves bounded capacity for global control work and continued Robinhood symbol validation, preventing cohort processing from starving universe discovery. Queue status now exposes `TICKER_COMPLETION_COHORT` and cohort size 25. Existing queued jobs remain intact and restart-safe; trading remains DISABLED.
+
+
+## Evidence-backed operator briefing (2026-08-21)
+
+- Replaced the static pre-market placeholder with a read-only, redacted investment briefing generated from Aegis records: benchmark tape, planned allocations and non-HOLD decisions, upcoming dividend events, fresh governed intelligence and news, research-readiness counts, and a compact system footer. Missing evidence is disclosed instead of converted into a signal. Email remains notification-only and cannot authorize trading.
