@@ -39,11 +39,20 @@ def investment_sections(cfg):
     sections.append(("Evidence readiness",readiness or ["Research-readiness count is unavailable."]))
     return sections
 
+def postmarket_sections(cfg):
+    q=chr(39);base=investment_sections(cfg)
+    broker=db_lines(f"SELECT concat({q}Robinhood snapshot {q},status,{q} observed {q},source_observed_at,{q} — reconciliation {q},coalesce(reconciliation->>{q}status{q},{q}UNKNOWN{q}),{q} — {q},coalesce(reconciliation->>{q}order_records{q},{q}0{q}),{q} orders and {q},coalesce(reconciliation->>{q}fill_records{q},{q}0{q}),{q} fills observed{q}) FROM broker_snapshots ORDER BY source_observed_at DESC LIMIT 1",cfg)
+    paper=db_lines(f"SELECT concat(count(DISTINCT po.id),{q} paper orders, {q},count(DISTINCT pf.id),{q} paper fills today — realized paper P&L {q},round(coalesce(max(pa.realized_pnl),0)::numeric,2),{q} dollars{q}) FROM paper_accounts pa LEFT JOIN paper_orders po ON po.account_id=pa.id AND po.created_at::date=current_date LEFT JOIN paper_fills pf ON pf.order_id=po.id",cfg)
+    decisions=db_lines(f"SELECT concat(decision,{q} {q},symbol,{q} — {q},array_to_string(reason_codes,{q}, {q})) FROM strategy_decisions WHERE created_at::date=current_date ORDER BY created_at DESC LIMIT 6",cfg)
+    plans=db_lines(f"SELECT concat(symbol,{q} — {q},replace(status,{q}_{q},{q} {q}),{q} — {q},round(reserved_notional::numeric,2),{q} dollars — entry {q},planned_entry_date) FROM planned_trades WHERE updated_at::date=current_date ORDER BY updated_at DESC LIMIT 5",cfg)
+    ingestion=db_lines(f"SELECT concat(count(*) FILTER (WHERE status={q}COMPLETE{q} AND completed_at::date=current_date),{q} ingestion jobs completed today; {q},count(*) FILTER (WHERE status={q}FAILED{q} AND completed_at::date=current_date),{q} failed; {q},count(*) FILTER (WHERE status={q}QUEUED{q}),{q} remain queued.{q}) FROM ingestion_jobs",cfg)
+    return [("Market close",base[0][1]),("Portfolio and execution evidence",broker+paper or ["No reconciled portfolio or paper-execution evidence is available."]),("Decisions and changes",plans+decisions or ["No strategy decision or planned-allocation change was recorded today."]),("Notable intelligence",base[3][1]),("Next-session watch",base[2][1]),("Data readiness",base[4][1]+ingestion)]
+
 def send(kind,cfg,test,detail_override=None):
     now=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     system=[('Aegis application',health('https://aegis-alpha.pacificao.com/health')),('Broker gateway',health('https://brokerage.aegis-alpha.pacificao.com/health')),('Trading','DISABLED')]
-    sections=investment_sections(cfg) if kind=="premarket" else []
-    content={'premarket':('Pre-market Decision Briefing','Decisions that matter before the market opens.','Evidence-backed actions, upcoming opportunities, fresh intelligence, and readiness constraints. Items without sufficient evidence are explicitly excluded.'),'postmarket':('Post-market Highlights','The important outcomes from today.','Review post-market intelligence, anomalies, scenario research, and risk-control changes. Verified broker snapshots are available in the authenticated Portfolio view. Gains and attribution remain omitted until sufficient reconciled history exists; no performance is fabricated.'),'alert':('Attention Required','Aegis operator-attention alert.','TEST ALERT: delivery and escalation formatting validation only. No production incident or user action is currently asserted.')}
+    sections=investment_sections(cfg) if kind=="premarket" else postmarket_sections(cfg) if kind=="postmarket" else []
+    content={'premarket':('Pre-market Decision Briefing','Decisions that matter before the market opens.','Evidence-backed actions, upcoming opportunities, fresh intelligence, and readiness constraints. Items without sufficient evidence are explicitly excluded.'),'postmarket':('Post-market Highlights','The important outcomes from today.','Verified closing context, portfolio and execution evidence, decisions made, tomorrow’s watchlist, and exceptions. P&L or attribution is omitted whenever reconciliation cannot support it.'),'alert':('Attention Required','Aegis operator-attention alert.','TEST ALERT: delivery and escalation formatting validation only. No production incident or user action is currently asserted.')}
     if kind=='alert' and detail_override:
         content['alert']=('Attention Required','Aegis operator-attention alert.',detail_override)
     title,subtitle,detail=content[kind]; prefix='[TEST] ' if test else ''
