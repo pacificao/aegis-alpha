@@ -33,7 +33,7 @@ from .data.calendar import EASTERN, dividend_entry_plan, market_session, next_se
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .data.queue import queue_status, seed_control_jobs
-from .data.dividends import company_name, recovery_estimate
+from .data.dividends import company_name, dividend_safety_assessment, recovery_estimate
 from .seed import seed_roadmap
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
@@ -383,9 +383,19 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
             elif row.data_type=="OHLCV":
                 try:bars.setdefault(row.event_time.date(),float(payload.get("adjusted_close",payload["close"])))
                 except (KeyError,TypeError,ValueError):pass
-        evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery_estimate(action_dates,bars,datetime.now(EASTERN).date())}
+        recovery=recovery_estimate(action_dates,bars,datetime.now(EASTERN).date())
+        evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery,**dividend_safety_assessment(recovery)}
+    active_plans=db.scalars(select(PlannedTrade).where(PlannedTrade.status.in_({"PLANNED","REVALIDATION_BLOCKED","READY_FOR_FINAL_APPROVAL"})).order_by(PlannedTrade.created_at.desc())).all()
+    plans={(plan.symbol,plan.planned_entry_date.isoformat()):plan for plan in active_plans}
     by_day={day:[] for day in dates}
-    for event in selected.values():event.update(evidence.get(event["symbol"],{}));by_day[event["ex_dividend_date"]].append(event)
+    for event in selected.values():
+        event.update(evidence.get(event["symbol"],{}))
+        event["eligible_entry_date"]=event.pop("planned_entry_date")
+        plan=plans.get((event["symbol"],event["eligible_entry_date"]))
+        event["trade_plan"]={"id":plan.id,"status":plan.status,"quantity":plan.quantity,"reserved_notional":plan.reserved_notional,"planned_entry_date":plan.planned_entry_date} if plan else None
+        if plan:
+            event["recommendation"]="PLANNED_BUY";event["recommendation_reason"]="Capital is reserved; market-day revalidation and deterministic RiskEngine authorization remain required."
+        by_day[event["ex_dividend_date"]].append(event)
     validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0)
     covered=int(db.scalar(select(func.count(func.distinct(DataRecord.instrument_id))).where(DataRecord.data_type=="BROKER_FUNDAMENTAL")) or 0)
     return {"sessions":[{**row,"events":sorted(by_day[row["session_date"]],key=lambda item:item["symbol"])} for row in calendar],"event_count":len(selected),"primary_provider":"ROBINHOOD","enrichment_providers":["ALPHA_VANTAGE","ALPACA"],"coverage":{"fundamentals_covered":covered,"validated_instruments":validated,"percent":round(covered/validated*100,1) if validated else 0,"status":"COMPLETE" if validated and covered>=validated else "BACKFILLING"},"trading":"DISABLED"}
