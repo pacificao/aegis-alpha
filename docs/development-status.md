@@ -290,3 +290,8 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Dashboard guardrail clarity (2026-08-20)
 
 - Added concise explanations for each decision guardrail and linked the Upcoming Candidates evidence tile directly to the Dividend Calendar.
+
+
+## Robinhood coverage denominator correction (2026-08-20)
+
+- Corrected Dividend Calendar coverage to count fundamentals only for the active Robinhood-validated universe. Inactive catalog records can no longer produce percentages above 100% or a false COMPLETE state.
