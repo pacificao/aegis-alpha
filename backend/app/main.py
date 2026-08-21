@@ -29,7 +29,7 @@ from .logging import configure_logging
 from .models import DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
 from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
-from .data.calendar import market_session, next_sessions, sessions
+from .data.calendar import dividend_entry_plan, market_session, next_sessions, sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .data.queue import queue_status, seed_control_jobs
@@ -358,7 +358,7 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
     for record,symbol,provider in records:
         payload=record.payload or {};day=str(payload.get("ex_dividend_date") or record.event_time.date().isoformat())
         if day not in dates or payload.get("action")!="DIVIDEND":continue
-        key=(symbol,day);candidate={"id":record.id,"symbol":symbol,"ex_dividend_date":day,"amount":payload.get("dividend_per_share",payload.get("amount")),"payment_frequency":payload.get("payment_frequency") or payload.get("frequency"),"payment_date":payload.get("payment_date") or payload.get("payable_date"),"annual_yield_pct":payload.get("annual_yield_pct"),"provider":provider.upper(),"coverage":payload.get("coverage","HISTORICAL_EVENT"),"quality_status":record.quality_status}
+        key=(symbol,day);candidate={"id":record.id,"symbol":symbol,"ex_dividend_date":day,"amount":payload.get("dividend_per_share",payload.get("amount")),"payment_frequency":payload.get("payment_frequency") or payload.get("frequency"),"payment_date":payload.get("payment_date") or payload.get("payable_date"),"annual_yield_pct":payload.get("annual_yield_pct"),"provider":provider.upper(),"coverage":payload.get("coverage","HISTORICAL_EVENT"),"quality_status":record.quality_status,**dividend_entry_plan(date.fromisoformat(day))}
         if key not in selected or provider=="robinhood":selected[key]=candidate
     symbols={event["symbol"] for event in selected.values()};evidence={}
     for symbol in symbols:
