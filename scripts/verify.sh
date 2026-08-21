@@ -4,6 +4,7 @@ canonical_url="${AEGIS_BASE_URL:-https://aegis-alpha.pacificao.com}"
 docker compose config --quiet
 docker compose build
 docker compose up -d --wait
+docker compose exec -T nginx nginx -s reload
 docker compose ps
 curl --fail --silent "$canonical_url/health" | grep -q '"trading":"DISABLED"'
 if curl --silent --output /dev/null --write-out '%{http_code}' "$canonical_url/api/status" | grep -q '^401$'; then
