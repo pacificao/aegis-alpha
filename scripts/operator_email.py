@@ -22,9 +22,15 @@ def db_lines(sql,cfg):
     except (OSError,subprocess.SubprocessError):
         return []
 
+def refresh_benchmarks():
+    command=["docker","compose","exec","-T","ingestion-worker","python","-m","app.data.benchmark_refresh"]
+    try:subprocess.run(command,capture_output=True,text=True,timeout=120,check=True)
+    except (OSError,subprocess.SubprocessError):return False
+    return True
+
 def investment_sections(cfg):
     q=chr(39)
-    market=db_lines(f"WITH ranked AS (SELECT i.symbol,dr.event_time::date day,coalesce(dr.payload->>{q}adjusted_close{q},dr.payload->>{q}close{q})::numeric close,row_number() OVER (PARTITION BY i.symbol ORDER BY dr.event_time DESC) rn FROM data_records dr JOIN instruments i ON i.id=dr.instrument_id WHERE dr.data_type={q}OHLCV{q} AND dr.quality_status<>{q}REJECTED{q} AND i.symbol IN ({q}SPY{q},{q}QQQ{q},{q}IWM{q})) SELECT concat(symbol,{q} — {q},max(close) FILTER (WHERE rn=1),{q} close on {q},max(day) FILTER (WHERE rn=1),{q} — {q},round(((max(close) FILTER (WHERE rn=1)/nullif(max(close) FILTER (WHERE rn=2),0))-1)*100,2),{q}% vs prior session{q}) FROM ranked WHERE rn<=2 GROUP BY symbol HAVING count(*)=2 ORDER BY symbol",cfg)
+    market=db_lines(f"WITH daily AS (SELECT DISTINCT ON (i.symbol,dr.event_time::date) i.symbol,dr.event_time::date AS session_date,coalesce(dr.payload->>{q}adjusted_close{q},dr.payload->>{q}close{q})::numeric AS close FROM data_records dr JOIN instruments i ON i.id=dr.instrument_id WHERE dr.data_type={q}OHLCV{q} AND dr.quality_status<>{q}REJECTED{q} AND i.symbol IN ({q}SPY{q},{q}QQQ{q},{q}IWM{q}) ORDER BY i.symbol,dr.event_time::date,dr.ingested_at DESC), ranked AS (SELECT symbol,session_date,close,row_number() OVER (PARTITION BY symbol ORDER BY session_date DESC) rn FROM daily) SELECT concat(symbol,{q} — {q},max(close) FILTER (WHERE rn=1),{q} close on {q},max(session_date) FILTER (WHERE rn=1),{q} — {q},round(((max(close) FILTER (WHERE rn=1)/nullif(max(close) FILTER (WHERE rn=2),0))-1)*100,2),{q}% vs prior session{q}) FROM ranked WHERE rn<=2 GROUP BY symbol HAVING count(*)=2 ORDER BY symbol",cfg)
     plans=db_lines(f"SELECT concat(symbol,{q} — {q},round(reserved_notional::numeric,2),{q} dollars reserved for {q},planned_entry_date,{q} — {q},replace(status,{q}_{q},{q} {q})) FROM planned_trades WHERE status IN ({q}PLANNED{q},{q}REVALIDATION_BLOCKED{q},{q}READY_FOR_FINAL_APPROVAL{q}) ORDER BY planned_entry_date LIMIT 5",cfg)
     decisions=db_lines(f"SELECT concat(decision,{q} {q},symbol,{q} — {q},array_to_string(reason_codes,{q}, {q})) FROM strategy_decisions WHERE created_at>=now()-interval {q}24 hours{q} AND decision<>{q}HOLD{q} ORDER BY created_at DESC LIMIT 5",cfg)
     intelligence=db_lines(f"SELECT concat(recommendation,{q} — {q},subject,{q}: {q},left(thesis,180),{q} — confidence {q},round(confidence::numeric*100),{q}%{q}) FROM intelligence_artifacts WHERE created_at>=now()-interval {q}36 hours{q} AND status<>{q}REJECTED{q} ORDER BY created_at DESC LIMIT 5",cfg)
@@ -49,6 +55,7 @@ def postmarket_sections(cfg):
     return [("Market close",base[0][1]),("Portfolio and execution evidence",broker+paper or ["No reconciled portfolio or paper-execution evidence is available."]),("Decisions and changes",plans+decisions or ["No strategy decision or planned-allocation change was recorded today."]),("Notable intelligence",base[3][1]),("Next-session watch",base[2][1]),("Data readiness",base[4][1]+ingestion)]
 
 def send(kind,cfg,test,detail_override=None):
+    if kind in {"premarket","postmarket"}:refresh_benchmarks()
     now=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     system=[('Aegis application',health('https://aegis-alpha.pacificao.com/health')),('Broker gateway',health('https://brokerage.aegis-alpha.pacificao.com/health')),('Trading','DISABLED')]
     sections=investment_sections(cfg) if kind=="premarket" else postmarket_sections(cfg) if kind=="postmarket" else []

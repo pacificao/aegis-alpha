@@ -311,3 +311,8 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Evidence-backed post-market highlights (2026-08-21)
 
 - Replaced the static post-market placeholder with a redacted read-only close report: verified benchmark context, latest broker reconciliation and observed order/fill counts, paper-trial activity, strategy and planned-allocation changes, notable intelligence, next-session dividend watch, research readiness, and daily ingestion outcomes. Unsupported P&L and attribution remain explicitly omitted rather than fabricated; email remains notification-only.
+
+
+## Briefing benchmark freshness gate (2026-08-21)
+
+- Pre-market and post-market delivery now performs a bounded, read-only Alpaca refresh for SPY, QQQ, and IWM immediately before rendering. Comparisons use one deduplicated adjusted close per completed session, so duplicate provider records cannot distort returns. Refresh failure remains fail-closed with an evidence-unavailable message; no signal or order is inferred. Intraday quote ingestion remains separate from official completed-session briefing comparisons.
