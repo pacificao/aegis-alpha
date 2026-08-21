@@ -302,6 +302,20 @@ class ControlledTradeIntent(Base):
     created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True)
 
 
+class PlannedTrade(Base):
+    __tablename__="planned_trades"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    strategy_decision_id:Mapped[int]=mapped_column(ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),index=True)
+    final_risk_assessment_id:Mapped[int|None]=mapped_column(ForeignKey("risk_assessments.id",ondelete="RESTRICT"),nullable=True,index=True)
+    symbol:Mapped[str]=mapped_column(String(32),index=True);side:Mapped[str]=mapped_column(String(4),default="BUY")
+    quantity:Mapped[float]=mapped_column(Float);reference_price:Mapped[float]=mapped_column(Float);reserved_notional:Mapped[float]=mapped_column(Float)
+    planned_entry_date:Mapped[date]=mapped_column(Date,index=True);status:Mapped[str]=mapped_column(String(32),index=True,default="PLANNED")
+    rationale:Mapped[str]=mapped_column(Text);plan_checksum:Mapped[str]=mapped_column(String(64),unique=True,index=True)
+    revalidation_detail:Mapped[str]=mapped_column(Text,default="");revalidated_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+    notification_status:Mapped[str]=mapped_column(String(20),default="PENDING",index=True);notification_event:Mapped[str]=mapped_column(String(32),default="PLAN_CREATED");notified_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+    cancellation_reason:Mapped[str]=mapped_column(Text,default="");created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True);updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
+
+
 class ControlledExecutionRecord(Base):
     __tablename__="controlled_execution_records"
     id:Mapped[int]=mapped_column(Integer,primary_key=True)

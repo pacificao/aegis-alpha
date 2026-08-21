@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 from typing import Literal
 
@@ -364,3 +364,13 @@ class ControlledIntentApproval(BaseModel):
 class ControlledIntentRejection(BaseModel):
     model_config=ConfigDict(extra="forbid")
     reason:str=Field(min_length=10,max_length=500)
+
+class PlannedTradeCreate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    strategy_decision_id:int=Field(gt=0);planned_entry_date:date;quantity:float=Field(gt=0,le=1_000_000_000);reference_price:float=Field(gt=0,le=1_000_000);rationale:str=Field(min_length=10,max_length=2000)
+class PlannedTradeCancel(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    reason:str=Field(min_length=10,max_length=500)
+class PlannedTradeRevalidate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    risk_assessment_id:int=Field(gt=0)
