@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.data.dividends import company_name,recovery_estimate
+from app.data.dividends import company_name,dividend_safety_assessment,recovery_estimate
 
 
 def test_company_name_uses_explicit_or_description():
@@ -14,3 +14,11 @@ def test_recovery_estimate_requires_twelve_events_and_uses_trading_sessions():
     assert result["estimated_recovery_days"] is None and result["recovery_observations"]==1
     result=recovery_estimate([date(2026,1,2)],bars,date(2026,2,1),minimum_observations=1)
     assert result["estimated_recovery_days"]==2 and result["recovery_probability_pct"]==100
+
+
+def test_dividend_safety_score_is_conservative_and_never_authorizes_trading():
+    thin=dividend_safety_assessment({"recovery_observations":2,"recovery_probability_pct":100,"estimated_recovery_days":2,"recovery_p90_days":3,"maximum_historical_drawdown_pct":2})
+    assert thin["recommendation"]=="INSUFFICIENT_DATA" and thin["safety_score_confidence"]=="LOW"
+    strong=dividend_safety_assessment({"recovery_observations":24,"recovery_probability_pct":100,"estimated_recovery_days":2,"recovery_p90_days":4,"maximum_historical_drawdown_pct":2})
+    assert strong["safety_score"]>=90 and strong["recommendation"]=="RESEARCH_CANDIDATE"
+    assert strong["score_authorizes_trade"] is False
