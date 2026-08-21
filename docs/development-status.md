@@ -306,3 +306,8 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Evidence-backed operator briefing (2026-08-21)
 
 - Replaced the static pre-market placeholder with a read-only, redacted investment briefing generated from Aegis records: benchmark tape, planned allocations and non-HOLD decisions, upcoming dividend events, fresh governed intelligence and news, research-readiness counts, and a compact system footer. Missing evidence is disclosed instead of converted into a signal. Email remains notification-only and cannot authorize trading.
+
+
+## Evidence-backed post-market highlights (2026-08-21)
+
+- Replaced the static post-market placeholder with a redacted read-only close report: verified benchmark context, latest broker reconciliation and observed order/fill counts, paper-trial activity, strategy and planned-allocation changes, notable intelligence, next-session dividend watch, research readiness, and daily ingestion outcomes. Unsupported P&L and attribution remain explicitly omitted rather than fabricated; email remains notification-only.
