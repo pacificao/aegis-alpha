@@ -6,7 +6,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.auth import Principal, csrf_protected, current_principal
-from app.data.calendar import market_session, next_sessions, sessions
+from app.data.calendar import calendar_entry_gate, dividend_entry_plan, market_session, next_sessions, sessions
 from app.schemas import RobinhoodDataIngestRequest
 from app.data.providers import AlphaVantageProvider, FredProvider, ProviderError, SecEdgarProvider
 from app.data.quality import checksum, validate
@@ -77,6 +77,15 @@ def test_market_calendar_handles_weekends_and_holidays():
     assert market_session(date(2026,7,6))["is_open"] is True
     assert len(sessions(date(2026,8,17),date(2026,8,21)))==5
     upcoming=next_sessions(10,date(2026,8,17));assert len(upcoming)==10 and all(row["is_open"] for row in upcoming)
+
+def test_dividend_entry_uses_prior_trading_session_and_fails_closed():
+    monday=date(2026,8,31)
+    assert dividend_entry_plan(monday)["planned_entry_date"]=="2026-08-28"
+    assert dividend_entry_plan(date(2026,7,6))["planned_entry_date"]=="2026-07-02"
+    assert dividend_entry_plan(monday,exceptional_closures={date(2026,8,28)})["planned_entry_date"]=="2026-08-27"
+    assert calendar_entry_gate(date(2026,8,28),date(2026,8,28),True,False)=="BLOCKED_TRADING_DISABLED"
+    assert calendar_entry_gate(date(2026,8,28),date(2026,8,28),False,True)=="BLOCKED_MARKET_OPEN_UNCONFIRMED"
+    assert calendar_entry_gate(date(2026,8,28),date(2026,8,28),True,True)=="CALENDAR_ELIGIBLE_RISK_REVIEW_REQUIRED"
 
 def test_phase3_data_routes_are_authenticated_and_safe(monkeypatch):
     monkeypatch.setattr(main_module.settings,"alpha_vantage_api_key","")
