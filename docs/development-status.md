@@ -330,3 +330,13 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Preserved every queued dataset while changing ticker-completion cohort selection to prioritize known upcoming ex-dividend events from nearest to latest, then established historical dividend payers, then securities with no known dividend history. Stocks, ETFs, and other validated security types use the same evidence-based ordering.
 - Control jobs and Robinhood universe validation retain reserved worker capacity, provider quotas remain enforced, and ordering changes neither stored data nor the trading-disabled boundary. Symbols with unknown dividend status naturally move forward if later provider evidence identifies an ex-dividend event.
 - Focused ingestion queue tests passed 8/8, including nearest-ex-date ordering and discovery-starvation protection.
+
+
+## Continuous investment candidate scanner (2026-08-22)
+
+- Added a restart-safe, login-independent deterministic candidate scanner inside the read-only ingestion worker. It evaluates at most 25 due securities every five minutes across the latest immutable version of each active research scenario; paused scenarios are excluded.
+- Durable per-version/per-instrument state rotates coverage, fingerprints normalized evidence, suppresses duplicate decisions, revisits ENTRY candidates every five minutes, backs unchanged non-candidates off to hourly, and retries missing/stale evidence after six hours. Upcoming dividend events retain priority without starving the rest of the validated universe.
+- Scanner facts include fresh price date/close, 20-session average volume, next ex-dividend date and event yield, historical recovery evidence, drawdown, and earnings-window state. Stale or absent price history fails closed. It has no broker call, RiskEngine authority, planning authority, or execution capability.
+- Created immutable Dividend Farm specification v2 to replace the former AAPL/MSFT/SPY seed restriction with the full validated strategy-compatible universe. The original v1 remains immutable and auditable.
+- Migration `0020_candidate_scanner` is deployed. The first full-universe production cycle tracked 25 securities and identified CSX as a research ENTRY candidate from normalized evidence; no RiskEngine authorization, capital reservation, broker call, or order occurred. Worker idle usage measured 0.00% CPU and 69 MiB memory.
+- Focused scanner/queue/strategy tests passed 12/12, production frontend/backend/worker builds passed, public health is healthy, and trading remains DISABLED. The full backend run recorded 70 passes plus two unrelated environment-specific failures already described in test output (container source-path fixture and production OpenAI configuration versus an unconfigured test expectation).
