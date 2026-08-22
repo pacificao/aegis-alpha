@@ -387,6 +387,11 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
                 except (KeyError,TypeError,ValueError):pass
         recovery=recovery_estimate(action_dates,bars,datetime.now(EASTERN).date())
         evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery,**dividend_safety_assessment(recovery)}
+    scenario=db.scalar(select(StrategyScenario).where(StrategyScenario.name=="Dividend Farm"));active_version=db.scalar(select(StrategyVersion).where(StrategyVersion.scenario_id==scenario.id).order_by(StrategyVersion.version.desc())) if scenario else None
+    strategy={}
+    if active_version:
+        rows=db.execute(select(CandidateScanState,Instrument.symbol,StrategyDecision).join(Instrument,Instrument.id==CandidateScanState.instrument_id).join(StrategyDecision,StrategyDecision.id==CandidateScanState.last_decision_id).where(CandidateScanState.version_id==active_version.id,Instrument.symbol.in_(symbols))).all()
+        strategy={symbol:{"version":active_version.version,"decision":decision.decision,"reason_codes":decision.reason_codes,"as_of":decision.as_of} for state,symbol,decision in rows}
     active_plans=db.scalars(select(PlannedTrade).where(PlannedTrade.status.in_({"PLANNED","REVALIDATION_BLOCKED","READY_FOR_FINAL_APPROVAL"})).order_by(PlannedTrade.created_at.desc())).all()
     plans={(plan.symbol,plan.planned_entry_date.isoformat()):plan for plan in active_plans}
     by_day={day:[] for day in dates}
@@ -395,8 +400,13 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
         event["eligible_entry_date"]=event.pop("planned_entry_date")
         plan=plans.get((event["symbol"],event["eligible_entry_date"]))
         event["trade_plan"]={"id":plan.id,"status":plan.status,"quantity":plan.quantity,"reserved_notional":plan.reserved_notional,"planned_entry_date":plan.planned_entry_date} if plan else None
+        event["strategy_decision"]=strategy.get(event["symbol"])
         if plan:
             event["recommendation"]="PLANNED_BUY";event["recommendation_reason"]="Capital is reserved; market-day revalidation and deterministic RiskEngine authorization remain required."
+        elif event["strategy_decision"]:
+            decision=event["strategy_decision"];event["recommendation"]="QUALIFIED_AWAITING_PLAN" if decision["decision"]=="ENTRY" else "DO_NOT_PLAN";event["recommendation_reason"]=("All strategy gates passed; unattended planner is awaiting available capital." if decision["decision"]=="ENTRY" else f"Dividend Farm v{decision["version"]} {decision["decision"]}: {', '.join(decision["reason_codes"])}")
+        else:
+            event["recommendation"]="AWAITING_STRATEGY_SCAN";event["recommendation_reason"]="No current immutable-strategy decision is available yet."
         by_day[event["ex_dividend_date"]].append(event)
     validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0)
     covered=int(db.scalar(select(func.count(func.distinct(DataRecord.instrument_id))).join(Instrument,Instrument.id==DataRecord.instrument_id).where(DataRecord.data_type=="BROKER_FUNDAMENTAL",Instrument.active.is_(True))) or 0)

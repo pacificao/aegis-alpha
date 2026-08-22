@@ -382,3 +382,13 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Added 0.10%, 0.15% and 0.25% event-yield variants to Aegis Lab sensitivity analysis. Backtests now suppress events below the selected floor and report 108 entry/exit/yield combinations.
 - Migration `0021_dividend_liquidity_yield` preserves prior versions and creates a new immutable Dividend Farm version with the calibrated rules. Scanner evidence now records both average share volume and average dollar volume.
 - Strategy UI exposes annual yield and average daily dollar volume in decision previews; Aegis Lab displays the event-yield threshold for every sensitivity result. Backend regression tests passed 78/78 and the production frontend build passed. Trading remains `DISABLED`.
+
+
+## Fully qualified Dividend Farm planning boundary (2026-08-22)
+
+- Closed the gap between saved Dividend Farm parameters and deterministic decisions with immutable version 4. Qualification now fails closed on event and annual yield bounds, recovery probability, observation count, median and p90 recovery, historical drawdown, dividend-history length, payment frequency, special-dividend policy, market capitalization, earnings window, dollar liquidity and permitted asset type.
+- Added normalized scanner evidence for Robinhood market capitalization, payment frequency, special-dividend status, history length and complete recovery-tail metrics. Missing required evidence produces no ENTRY rather than an optimistic candidate. Portfolio/sector/correlation limits remain independently enforced by RiskEngine.
+- Added an unattended qualified-entry planner. It converts only current v4 ENTRY decisions within the next ten exchange sessions into auditable capital reservations, sizes the $5 micro account at no more than $1 per plan under the existing exception, deduplicates plans, emits notifications and releases missed reservations through the existing lifecycle worker. It cannot assess risk, create an execution intent, call the broker or place an order.
+- Dividend Calendar now reports the active immutable strategy decision and exact reason codes instead of presenting recovery-only research scoring as plan eligibility.
+- Scanner capacity accounting no longer lets versions with no due instruments consume the bounded scan allowance, and incomplete specifications are skipped safely.
+- Regression suite passed 79/79 and the production frontend build passed. Trading remains `DISABLED`; controlled-live acceptance and explicit authorization remain separate prerequisites.

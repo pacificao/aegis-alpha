@@ -24,7 +24,9 @@ def _run_ingestion(settings)->None:
 
 def _run_candidates(settings)->None:
     db=SessionLocal()
-    try:logging.info("candidate_scan=%s",scan_batch(db,settings))
+    try:
+        logging.info("candidate_scan=%s",scan_batch(db,settings))
+        if created:=create_qualified_plans(db,datetime.now(EASTERN).date()):logging.info("qualified_plans=%s risk_authorized=false trading=DISABLED",created)
     except Exception:logging.exception("candidate_scan_failed")
     finally:db.close()
 
