@@ -347,6 +347,13 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Dashboard now separates the actual ten-day capital plan from research opportunities. Only durable capital-reserved plans are labeled as planned buys; the ten-session calendar remains a research outlook and cannot imply a commitment.
 - Production verification recorded consecutive unattended broker synchronizations (`snapshot_id=87` and `88`, one attempt each), a healthy public endpoint, 73/73 backend tests and a successful production frontend build. Trading remained `DISABLED`.
 - Final acceptance exposed that the long-running Nginx container still held the pre-fix bind-mounted configuration inode despite the repository update. Recreating only Nginx activated Docker DNS re-resolution. A subsequent forced frontend recreation changed its container address while the Nginx container ID and start time remained unchanged; `/performance` recovered at HTTP 200 after the resolver TTL. This closes the persistent post-rebuild 502 path.
+
+## Autonomous lifecycle contract before live trading (2026-08-22)
+
+- The login-independent worker now expires every reservation-holding planned-trade state after its eligible NYSE entry session passes, including plans awaiting final human approval. Expiry releases deployable capital automatically, queues an operator notification, and writes a durable system audit event; it never calls the broker.
+- Removed expiry as an unaudited SQL side effect of the email monitor. Email now reports lifecycle events created by the application worker, so capital safety does not depend on SMTP or a logged-in operator.
+- Expanded canonical Phases 11 and 12 with continuous scheduler/restart recovery, automatic-versus-human risk tiers, stale-work cancellation, continuous reconciliation, rolling Dividend Farm recovery monitoring, versioned parameter challengers, walk-forward/paper/shadow promotion gates, drift/overfit detection, bounded rollout and rollback.
+- Active live parameters remain immutable. AI may propose challengers, but cannot directly rewrite live strategy or risk policy; Strategies decide, deterministic RiskEngine authorizes, and Execution executes. Regression suite passed 74/74; trading remained `DISABLED`.
 - Focused scanner/queue/strategy tests passed 12/12, production frontend/backend/worker builds passed, public health is healthy, and trading remains DISABLED. The full backend run recorded 70 passes plus two unrelated environment-specific failures already described in test output (container source-path fixture and production OpenAI configuration versus an unconfigured test expectation).
 
 
