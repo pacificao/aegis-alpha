@@ -53,3 +53,13 @@ def test_strategy_engine_routes_reject_unauthenticated_access():
     with TestClient(app) as client:
         assert client.get("/api/strategy-engine/scenarios/1/versions").status_code==401
         assert client.get("/api/strategy-engine/versions/1/decisions").status_code==401
+
+
+def test_dividend_dollar_liquidity_and_yield_gates():
+    spec={**SPEC,"universe":{**SPEC["universe"],"symbols":[]},"filters":[{"field":"average_daily_dollar_volume","operator":"gte","value":5000000,"reason":"DOLLAR_LIQUIDITY_ELIGIBLE"}],"entry_rules":[{"field":"event_yield_pct","operator":"gte","value":0.15,"reason":"EVENT_YIELD_ELIGIBLE"},{"field":"annual_yield_pct","operator":"gte","value":1.0,"reason":"ANNUAL_YIELD_ELIGIBLE"}]}
+    strong={"event_yield_pct":0.20,"annual_yield_pct":1.2,"average_daily_dollar_volume":23000000,"recovered":False}
+    assert evaluate(spec,"CRS",strong)["decision"]=="ENTRY"
+    assert evaluate(spec,"CRS",{**strong,"event_yield_pct":0.04})["decision"]=="HOLD"
+    assert evaluate(spec,"CRS",{**strong,"annual_yield_pct":0.16})["decision"]=="HOLD"
+    excluded=evaluate(spec,"CRS",{**strong,"average_daily_dollar_volume":4000000})
+    assert excluded["decision"]=="EXCLUDE" and excluded["reason_codes"]==["FILTER_DOLLAR_LIQUIDITY_ELIGIBLE"]
