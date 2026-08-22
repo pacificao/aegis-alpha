@@ -10,7 +10,7 @@ from ..config import get_settings
 from ..database import SessionLocal
 from ..gateway import BrokerGatewayClient
 from ..models import BrokerConnectionConfig
-from ..planning import expire_missed_plans
+from ..planning import create_qualified_plans, expire_missed_plans
 from sqlalchemy import select
 from .calendar import EASTERN
 from .queue import run_batch
