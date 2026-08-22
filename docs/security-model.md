@@ -9,6 +9,7 @@
 - Audit activity records authenticated mutations without secrets.
 - The Robinhood console initiates official browser OAuth but never accepts credentials. An isolated gateway encrypts authorization material, exposes no raw MCP responses, and permits only an exact read-tool allowlist; all mutations and unknown tools fail closed.
 - Trading is disabled by configuration and absence of execution endpoints.
+- Live readiness additionally fails closed unless controlled-live order/fill/reconciliation acceptance, every Phase 11 autonomy control, and the required Phase 12 evolution-safety controls are verified COMPLETE in PostgreSQL. Operator authorization cannot override an incomplete engineering gate. Optional providers and asset expansion do not block initial equity launch, but no unvalidated strategy or asset receives authority.
 
 Staging uses separate credentials, database, Redis, hostname, and restricted synthetic/paper data. Production uses an encrypted managed secret store or root-readable deployment-time secret files, never image build arguments, plus DigitalOcean secret injection, encrypted backups, least-privilege service identities, TLS, and a separate execution security domain. Brokerage credentials will live only in that domain.
 
