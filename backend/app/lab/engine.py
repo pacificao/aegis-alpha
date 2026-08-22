@@ -77,8 +77,8 @@ def simulate(bars:list[Bar],actions:list[Action],config:dict[str,Any])->dict:
             if not entry or symbol in positions:continue
             allocated=sum(pos.shares*bar.close for pos in positions.values() if pos.symbol in day_bars)
             budget=min(equity*max_position,max(0,equity*max_allocation-allocated),cash-commission)
-            entry_price=bar.close*(1+(slippage_bps+spread_bps/2)/10000); shares=math.floor(budget/entry_price)
-            if shares<=0:continue
+            entry_price=bar.close*(1+(slippage_bps+spread_bps/2)/10000); shares=round(budget/entry_price,6)
+            if shares<=0 or shares*entry_price<1:continue
             cost=shares*entry_price+commission; cash-=cost; positions[symbol]=Position(symbol,shares,day,entry_price,cost,entry[1],entry[0]); adverse[symbol]=0; turnover+=cost
         marked=sum(pos.shares*day_bars[pos.symbol].close for pos in positions.values() if pos.symbol in day_bars); equity_curve.append({"date":day.isoformat(),"equity":_round(cash+marked),"cash":_round(cash),"exposure_pct":_round(marked/(cash+marked)*100 if cash+marked else 0)})
     if positions:

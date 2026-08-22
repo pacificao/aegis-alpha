@@ -16,7 +16,7 @@ def proposal(**changes):
 def test_all_controls_authorize_but_never_execute():
     result=evaluate(DEFAULT_POLICY,proposal(),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert result["outcome"]=="AUTHORIZED" and result["risk_authorized"] is True
-    assert result["executable"] is False and result["trading"]=="DISABLED" and len(result["checks"])==17
+    assert result["executable"] is False and result["trading"]=="DISABLED" and len(result["checks"])==20
 
 def test_every_phase6_control_fails_closed():
     cases=[
@@ -35,18 +35,25 @@ def test_every_phase6_control_fails_closed():
 def test_micro_account_exception_is_bounded_and_explicit():
     policy={**DEFAULT_POLICY,"micro_account_trial_eligible":True}
     base={"price":500,"reference_price":500,"portfolio_value":5,"buying_power":5,"total_exposure_value":0,"sector_exposure_value":0,"correlated_exposure_value":0}
-    allowed=evaluate(policy,proposal(quantity=0.002,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    allowed=evaluate(policy,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     position=next(check for check in allowed["checks"] if check["code"]=="POSITION_LIMIT")
     assert allowed["outcome"]=="AUTHORIZED" and allowed["notional"]==1.0
     assert position["limit"]==1.0 and "micro-account" in position["detail"]
-    too_large=evaluate(policy,proposal(quantity=0.0022,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    too_large=evaluate(policy,proposal(quantity=0.0022,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert too_large["outcome"]=="REJECTED" and "POSITION_LIMIT" in too_large["reason_codes"]
-    ordinary=evaluate(DEFAULT_POLICY,proposal(quantity=0.002,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    ordinary=evaluate(DEFAULT_POLICY,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert ordinary["outcome"]=="REJECTED" and "POSITION_LIMIT" in ordinary["reason_codes"]
-    threshold=evaluate(policy,proposal(quantity=0.002,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    threshold=evaluate(policy,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert threshold["outcome"]=="AUTHORIZED"
-    above_pct=evaluate(policy,proposal(quantity=0.0022,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    above_pct=evaluate(policy,proposal(quantity=0.0022,fractional_eligible=True,regular_session=True,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert above_pct["outcome"]=="REJECTED" and "POSITION_LIMIT" in above_pct["reason_codes"]
+
+def test_fractional_orders_require_one_dollar_eligibility_and_regular_session():
+    controls={"kill_switch_engaged":False,"circuit_breaker_engaged":False};base={"quantity":0.002,"price":500,"reference_price":500}
+    assert "FRACTIONAL_ELIGIBILITY" in evaluate(DEFAULT_POLICY,proposal(**base),controls,NOW)["reason_codes"]
+    assert "FRACTIONAL_SESSION" in evaluate(DEFAULT_POLICY,proposal(**base,fractional_eligible=True),controls,NOW)["reason_codes"]
+    under={**base,"quantity":0.001}
+    assert "MINIMUM_NOTIONAL" in evaluate(DEFAULT_POLICY,proposal(**under,fractional_eligible=True,regular_session=True),controls,NOW)["reason_codes"]
 
 def test_risk_api_auth_persistence_deduplication_and_controls():
     principal=Principal(username="test-operator",session_id="risk",csrf_token="csrf")

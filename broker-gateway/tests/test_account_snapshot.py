@@ -33,4 +33,6 @@ def test_execution_schema_mapping_is_exact_and_bounded():
  payload=ExecutionRequest(selected_account_ref="ref_0123456789abcdef01234567",symbol="SPY",side="BUY",quantity=0.01,limit_price=500,intent_checksum="a"*64,approval_checksum="b"*64)
  schema={"required":["account_number","symbol","side","quantity","order_type","limit_price","time_in_force"],"properties":{k:{} for k in ["account_number","symbol","side","quantity","order_type","limit_price","time_in_force"]}}
  args=_execution_arguments(schema,"private",payload);assert args=={"account_number":"private","symbol":"SPY","side":"buy","quantity":0.01,"order_type":"limit","limit_price":500,"time_in_force":"gfd"}
+ try:ExecutionRequest(selected_account_ref="ref_0123456789abcdef01234567",symbol="SPY",side="BUY",quantity=0.001,limit_price=500,intent_checksum="a"*64,approval_checksum="b"*64);assert False
+ except ValueError:pass
  assert _execution_arguments({"required":["unsupported"],"properties":{"unsupported":{}}},"private",payload) is None
