@@ -4,11 +4,11 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import re
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ..config import Settings
-from ..models import DataProvider, IngestionJob, IngestionRun, Instrument
+from ..models import DataProvider, DataRecord, IngestionJob, IngestionRun, Instrument
 from .providers import AlphaVantageProvider, NasdaqTraderProvider, ProviderError
 from .service import ingest, ingest_robinhood
 
@@ -162,18 +162,22 @@ def process_one(db:Session,settings:Settings,job:IngestionJob,now:datetime|None=
         db.rollback();job=db.get(IngestionJob,job.id);delay=min(1440,2**min(job.attempts,10));job.detail=type(exc).__name__;job.status="FAILED" if job.attempts>=job.max_attempts else "QUEUED";job.available_at=now+timedelta(minutes=delay);job.completed_at=now if job.status=="FAILED" else None;db.commit();return job.status
 
 def _select_batch_jobs(db:Session,now:datetime,limit:int,cohort_size:int=COMPLETION_COHORT_SIZE)->list[IngestionJob]:
-    """Finish small active-symbol cohorts while preserving control and discovery capacity."""
+    """Finish dividend-date-prioritized ticker cohorts without starving discovery."""
     ready=(IngestionJob.status=="QUEUED",IngestionJob.available_at<=now)
+    next_ex=select(func.min(DataRecord.event_time)).where(DataRecord.instrument_id==Instrument.id,DataRecord.data_type=="CORPORATE_ACTION",DataRecord.quality_status!="REJECTED",DataRecord.event_time>=now).correlate(Instrument).scalar_subquery()
+    dividend_count=select(func.count(DataRecord.id)).where(DataRecord.instrument_id==Instrument.id,DataRecord.data_type=="CORPORATE_ACTION",DataRecord.quality_status!="REJECTED").correlate(Instrument).scalar_subquery()
+    dividend_rank=(case((next_ex.is_not(None),0),(dividend_count>0,1),else_=2),case((next_ex.is_not(None),next_ex),else_=None))
     selected=[]
     control=db.scalars(select(IngestionJob).where(*ready,IngestionJob.symbol.is_(None)).order_by(IngestionJob.priority,IngestionJob.id).limit(min(2,limit))).all()
     selected.extend(control);remaining=limit-len(selected)
     if remaining:
-        validation=db.scalars(select(IngestionJob).join(Instrument,Instrument.symbol==IngestionJob.symbol).where(*ready,Instrument.active.is_(False),IngestionJob.provider=="robinhood",IngestionJob.dataset=="get_equity_quotes").order_by(IngestionJob.id).limit(min(1,remaining))).all()
+        validation=db.scalars(select(IngestionJob).join(Instrument,Instrument.symbol==IngestionJob.symbol).where(*ready,Instrument.active.is_(False),IngestionJob.provider=="robinhood",IngestionJob.dataset=="get_equity_quotes").order_by(*dividend_rank,IngestionJob.id).limit(min(1,remaining))).all()
         selected.extend(validation);remaining=limit-len(selected)
     if remaining:
-        cohort=db.scalars(select(IngestionJob.symbol).join(Instrument,Instrument.symbol==IngestionJob.symbol).where(*ready,Instrument.active.is_(True)).group_by(IngestionJob.symbol).order_by(func.min(IngestionJob.id)).limit(cohort_size)).all()
+        cohort=db.scalars(select(IngestionJob.symbol).join(Instrument,Instrument.symbol==IngestionJob.symbol).where(*ready,Instrument.active.is_(True)).group_by(IngestionJob.symbol,Instrument.id).order_by(*dividend_rank,func.min(IngestionJob.id)).limit(cohort_size)).all()
         if cohort:
-            jobs=db.scalars(select(IngestionJob).where(*ready,IngestionJob.symbol.in_(cohort)).order_by(IngestionJob.symbol,IngestionJob.priority,IngestionJob.id).limit(remaining)).all()
+            cohort_order=case({symbol:index for index,symbol in enumerate(cohort)},value=IngestionJob.symbol,else_=len(cohort))
+            jobs=db.scalars(select(IngestionJob).where(*ready,IngestionJob.symbol.in_(cohort)).order_by(cohort_order,IngestionJob.priority,IngestionJob.id).limit(remaining)).all()
             selected.extend(jobs);remaining=limit-len(selected)
     if remaining:
         used=[job.id for job in selected];fallback=select(IngestionJob).where(*ready)
@@ -192,4 +196,4 @@ def run_batch(db:Session,settings:Settings,limit:int|None=None)->dict:
 def queue_status(db:Session)->dict:
     counts=dict(db.execute(select(IngestionJob.status,func.count()).group_by(IngestionJob.status)).all());providers=dict(db.execute(select(IngestionJob.provider,func.count()).where(IngestionJob.status=="QUEUED").group_by(IngestionJob.provider)).all());validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0);catalog=int(db.scalar(select(func.count()).select_from(Instrument)) or 0)
     next_job=db.scalar(select(func.min(IngestionJob.available_at)).where(IngestionJob.status=="QUEUED"))
-    return {"counts":counts,"queued_by_provider":providers,"catalog_instruments":catalog,"active_validated_instruments":validated,"pending_robinhood_validation":max(catalog-validated,0),"next_job_at":next_job,"scheduling_mode":"TICKER_COMPLETION_COHORT","cohort_size":COMPLETION_COHORT_SIZE,"trading":"DISABLED"}
+    return {"counts":counts,"queued_by_provider":providers,"catalog_instruments":catalog,"active_validated_instruments":validated,"pending_robinhood_validation":max(catalog-validated,0),"next_job_at":next_job,"scheduling_mode":"DIVIDEND_DATE_TICKER_COHORT","cohort_size":COMPLETION_COHORT_SIZE,"trading":"DISABLED"}
