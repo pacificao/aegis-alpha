@@ -57,6 +57,7 @@ cat > "${INSTALL_DIR}/compose.yml" <<EOF
 services:
   broker-gateway:
     build: ${INSTALL_DIR}/source/broker-gateway
+    init: true
     env_file: ${CONFIG_DIR}/gateway.env
     ports: ["127.0.0.1:8100:8100"]
     volumes:

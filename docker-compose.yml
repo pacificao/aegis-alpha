@@ -29,6 +29,7 @@ services:
 
   broker-gateway:
     build: ./broker-gateway
+    init: true
     environment:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://aegis-alpha.pacificao.com}
       AEGIS_UI_URL: ${AEGIS_UI_URL:-https://aegis-alpha.pacificao.com}

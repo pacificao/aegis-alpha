@@ -340,3 +340,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Created immutable Dividend Farm specification v2 to replace the former AAPL/MSFT/SPY seed restriction with the full validated strategy-compatible universe. The original v1 remains immutable and auditable.
 - Migration `0020_candidate_scanner` is deployed. The first full-universe production cycle tracked 25 securities and identified CSX as a research ENTRY candidate from normalized evidence; no RiskEngine authorization, capital reservation, broker call, or order occurred. Worker idle usage measured 0.00% CPU and 69 MiB memory.
 - Focused scanner/queue/strategy tests passed 12/12, production frontend/backend/worker builds passed, public health is healthy, and trading remains DISABLED. The full backend run recorded 70 passes plus two unrelated environment-specific failures already described in test output (container source-path fixture and production OpenAI configuration versus an unconfigured test expectation).
+
+
+## Container reaping and dynamic Nginx upstreams (2026-08-22)
+
+- Diagnosed all 23 host zombie processes as exited Python health checks parented to Uvicorn PID 1 in the local broker-gateway container. Enabled Docker init in both the main Compose service and dedicated-broker bootstrap template, recreated only the local gateway, and verified `docker-init` is PID 1 with Uvicorn as its child. Host zombie count fell from 23 to 0.
+- Replaced startup-only Nginx upstream DNS resolution with Docker embedded DNS, shared upstream zones, ten-second validity, and runtime `resolve` for frontend, backend, and the local gateway. Nginx configuration validation passed.
+- Deliberately recreated backend and frontend without restarting Nginx. The Nginx container ID and start timestamp remained unchanged; public `/health` returned healthy with trading disabled and `/login` returned HTTP 200. This removes the persistent stale-container-IP 502 failure mode. A single replica may still have a brief unavailable window during replacement, but Nginx now recovers automatically when the healthy replacement registers.

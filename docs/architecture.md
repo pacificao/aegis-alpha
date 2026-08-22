@@ -2,6 +2,8 @@
 
 Browser traffic enters only through Nginx. Nginx proxies UI requests to Next.js and `/api`, `/health`, login, and logout requests to FastAPI. FastAPI owns sessions, roadmap state, audit activity, SQLAlchemy access to PostgreSQL, and Redis connectivity. PostgreSQL and Redis exist only on the internal Compose network.
 
+Nginx uses Docker embedded DNS with dynamically resolved, shared-memory upstream zones for frontend, backend, and the local gateway. Recreated application containers therefore do not leave Nginx pinned to obsolete container addresses; persistent post-deployment 502 responses do not require an Nginx restart. Single-replica replacement can still produce a brief unavailable interval while the replacement becomes healthy. Long-running Python gateway containers run behind Docker init so terminated health-check children are reaped.
+
 Future order flow is strictly `AI proposal -> deterministic strategy decision -> deterministic RiskEngine authorization -> broker-neutral execution adapter`. No component may skip a stage. Research and execution deploy into separate accounts/networks with separate identities and secret stores.
 The Aegis browser talks only to FastAPI. FastAPI coordinates a narrow broker gateway API for status, OAuth start, and disconnect; it cannot select MCP tools. The gateway alone holds encrypted OAuth material and its exact read-tool allowlist. Real authorization is deployed in a separate execution security domain that the development AI cannot administer.
 
