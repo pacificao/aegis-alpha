@@ -6,6 +6,7 @@ from app.database import SessionLocal
 from app.gateway import BrokerGatewayClient
 from app.main import app
 from app.broker_sync.service import normalize,synchronize
+from app.data.worker import _run_broker_sync
 from app.models import BrokerSnapshot,DevelopmentActivity
 P=Principal(username="test-operator",session_id="test",csrf_token="csrf")
 def payload():
@@ -37,6 +38,7 @@ def test_authenticated_sync_and_portfolio_projection(monkeypatch):
   with TestClient(app) as client:
    sync=client.post("/api/broker/robinhood/sync",headers={"X-CSRF-Token":"csrf"});assert sync.status_code==200;assert sync.json()["executable"] is False;assert sync.json()["trading"]=="DISABLED"
    view=client.get("/api/portfolio");assert view.status_code==200;body=view.json();assert body["holdings_available"] is True;assert body["snapshot"]["reconciliation"]["status"]=="MATCHED"
+   readiness=client.get("/api/performance/readiness");assert readiness.status_code==200;assert readiness.json()["broker_snapshots"]>=1;assert readiness.json()["trading"]=="DISABLED"
  finally:app.dependency_overrides.clear()
 def test_no_execution_surface_exists():
  root=Path(__file__).parents[1];sources=((root/"backend/app/broker.py").read_text()+(root/"backend/app/gateway.py").read_text())
@@ -55,6 +57,10 @@ def test_multi_account_snapshot_is_rejected():
  p=payload();p["accounts"].append({**p["accounts"][0],"account_ref":"ref_abcdefabcdefabcdefabcdef"})
  try:normalize(p);assert False
  except ValueError:pass
+def test_unattended_worker_refreshes_selected_account_without_user_session(monkeypatch):
+ db=SessionLocal();cfg=__import__("app.models",fromlist=["BrokerConnectionConfig"]).BrokerConnectionConfig;row=db.query(cfg).filter_by(provider="robinhood").one();row.selected_account_ref="ref_0123456789abcdef01234567";before=db.query(BrokerSnapshot).count();db.commit();db.close()
+ monkeypatch.setattr(BrokerGatewayClient,"status",lambda self:{"status":"CONNECTED","trading":"DISABLED","mode":"READ_ONLY"});monkeypatch.setattr(BrokerGatewayClient,"account_snapshot",lambda self,selected_account_ref:payload())
+ _run_broker_sync(__import__("app.config",fromlist=["get_settings"]).get_settings());db=SessionLocal();assert db.query(BrokerSnapshot).count()>=before;assert db.query(DevelopmentActivity).filter_by(actor="system:broker-sync",action="broker_snapshot_synchronized").count()>=1;db.close()
 def test_gateway_account_scope_mismatch_fails_closed(monkeypatch):
  monkeypatch.setattr(BrokerGatewayClient,"account_snapshot",lambda self,selected_account_ref:payload())
  db=SessionLocal();run=synchronize(db,BrokerGatewayClient(__import__("app.config",fromlist=["get_settings"]).get_settings()),"test","ref_abcdefabcdefabcdefabcdef")

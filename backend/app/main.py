@@ -467,6 +467,21 @@ def lab_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_
     versions=db.scalar(select(func.count()).select_from(StrategyVersion)) or 0;runs=db.scalar(select(func.count()).select_from(LabRun)) or 0
     return {"historical_bars":bars,"corporate_actions":actions,"strategy_versions":versions,"completed_runs":runs,"ready":bars>1 and versions>0,"next_requirement":None if bars>1 and versions>0 else "Ingest normalized OHLCV and create a strategy version","trading":"DISABLED"}
 
+@app.get("/api/performance/readiness")
+def performance_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()))
+    observed=snapshot.source_observed_at if snapshot else None
+    if observed and observed.tzinfo is None:observed=observed.replace(tzinfo=UTC)
+    return {
+        "strategy_decisions":db.scalar(select(func.count()).select_from(StrategyDecision)) or 0,
+        "backtests":db.scalar(select(func.count()).select_from(LabRun)) or 0,
+        "paper_orders":db.scalar(select(func.count()).select_from(PaperOrder)) or 0,
+        "broker_snapshots":db.scalar(select(func.count()).select_from(BrokerSnapshot)) or 0,
+        "latest_broker_snapshot_at":observed,
+        "broker_snapshot_fresh":bool(observed and (datetime.now(UTC)-observed).total_seconds()<=900),
+        "live_performance_enabled":False,"trading":"DISABLED"
+    }
+
 @app.post("/api/lab/backtests",status_code=201)
 def create_lab_backtest(payload:LabBacktestRequest,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
     try:run=run_backtest(db,payload,principal.username)
@@ -629,7 +644,7 @@ def serialize_planned_trade(row:PlannedTrade):
 @app.get("/api/planned-trades")
 def planned_trades(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
     rows=db.scalars(select(PlannedTrade).order_by(PlannedTrade.planned_entry_date,PlannedTrade.created_at.desc()).limit(limit)).all()
-    return {"plans":[serialize_planned_trade(x) for x in rows],"capacity":planned_capacity(db),"trading":"DISABLED"}
+    return {"plans":[serialize_planned_trade(x) for x in rows],"planning_sessions":[x["session_date"] for x in next_sessions(10)],"capacity":planned_capacity(db),"trading":"DISABLED"}
 
 @app.post("/api/planned-trades",status_code=201)
 def create_planned_trade(payload:PlannedTradeCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):

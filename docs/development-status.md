@@ -339,6 +339,14 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Scanner facts include fresh price date/close, 20-session average volume, next ex-dividend date and event yield, historical recovery evidence, drawdown, and earnings-window state. Stale or absent price history fails closed. It has no broker call, RiskEngine authority, planning authority, or execution capability.
 - Created immutable Dividend Farm specification v2 to replace the former AAPL/MSFT/SPY seed restriction with the full validated strategy-compatible universe. The original v1 remains immutable and auditable.
 - Migration `0020_candidate_scanner` is deployed. The first full-universe production cycle tracked 25 securities and identified CSX as a research ENTRY candidate from normalized evidence; no RiskEngine authorization, capital reservation, broker call, or order occurred. Worker idle usage measured 0.00% CPU and 69 MiB memory.
+
+## Unattended account evidence and dynamic performance UI (2026-08-22)
+
+- The persistent ingestion worker now refreshes the single selected Robinhood account every five minutes without requiring a logged-in browser. Each run uses the existing official read-only gateway, immutable snapshot normalization, reconciliation and audit ledger; disconnected or unselected states skip safely, and no mutation or order surface was added.
+- Performance no longer displays static phase-completion statements. It reports live database counts for normalized evidence, deterministic decisions, reproducible backtests, paper orders and immutable broker snapshots, plus market/account freshness.
+- Dashboard now separates the actual ten-day capital plan from research opportunities. Only durable capital-reserved plans are labeled as planned buys; the ten-session calendar remains a research outlook and cannot imply a commitment.
+- Production verification recorded consecutive unattended broker synchronizations (`snapshot_id=87` and `88`, one attempt each), a healthy public endpoint, 73/73 backend tests and a successful production frontend build. Trading remained `DISABLED`.
+- Final acceptance exposed that the long-running Nginx container still held the pre-fix bind-mounted configuration inode despite the repository update. Recreating only Nginx activated Docker DNS re-resolution. A subsequent forced frontend recreation changed its container address while the Nginx container ID and start time remained unchanged; `/performance` recovered at HTTP 200 after the resolver TTL. This closes the persistent post-rebuild 502 path.
 - Focused scanner/queue/strategy tests passed 12/12, production frontend/backend/worker builds passed, public health is healthy, and trading remains DISABLED. The full backend run recorded 70 passes plus two unrelated environment-specific failures already described in test output (container source-path fixture and production OpenAI configuration versus an unconfigured test expectation).
 
 
