@@ -373,3 +373,12 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Fractional orders now require an active Robinhood-validated, exchange-listed equity or ETF candidate and the actual regular NYSE session. The backend derives these facts from trusted instrument metadata and the exchange calendar rather than accepting caller claims; the official broker pre-trade review remains the final eligibility authority.
 - Dividend Farm laboratory sizing now preserves fractional shares instead of rounding down to whole shares, including micro-account research, while discarding simulated orders below $1.
 - Backend regression tests passed 76/76 and broker-gateway tests passed 37/37. Trading remains `DISABLED`.
+
+
+## Dividend Farm liquidity and yield calibration (2026-08-22)
+
+- Replaced the blunt 500,000-share average-volume gate with a 20-session average daily dollar-volume gate of $5 million. This prevents high-priced, actively traded securities from being excluded solely because their share count is low.
+- Added annual yield (minimum 1.0%) to the immutable deterministic entry rules while retaining the 0.15% per-event yield floor and 80% recovery-probability requirement. Research candidates must pass all independent gates; recovery speed alone cannot create an entry.
+- Added 0.10%, 0.15% and 0.25% event-yield variants to Aegis Lab sensitivity analysis. Backtests now suppress events below the selected floor and report 108 entry/exit/yield combinations.
+- Migration `0021_dividend_liquidity_yield` preserves prior versions and creates a new immutable Dividend Farm version with the calibrated rules. Scanner evidence now records both average share volume and average dollar volume.
+- Strategy UI exposes annual yield and average daily dollar volume in decision previews; Aegis Lab displays the event-yield threshold for every sensitivity result. Backend regression tests passed 78/78 and the production frontend build passed. Trading remains `DISABLED`.

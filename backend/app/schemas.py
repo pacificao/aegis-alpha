@@ -49,7 +49,7 @@ class RobinhoodConfigOut(BaseModel):
     updated_at: datetime
 
 
-ParameterValue = bool | int | float | str | list[str]
+ParameterValue = bool | int | float | str | list[bool | int | float | str]
 
 
 class ScenarioBase(BaseModel):
@@ -252,6 +252,7 @@ class LabBacktestRequest(BaseModel):
     spread_bps:float=Field(ge=0,le=500)
     max_position_pct:float=Field(gt=0,le=10)
     max_allocation_pct:float=Field(gt=0,le=100)
+    min_dividend_event_pct:float=Field(ge=0,le=100)
     entry_days_before_ex_date:int=Field(ge=1,le=10)
     exit_method:Literal["PURCHASE_PRICE","PURCHASE_MINUS_DIVIDEND","PROFIT_TARGET","FIXED_5","FIXED_10","FIXED_15","FIXED_30","HISTORICAL_RECOVERY","VOLATILITY","HYBRID"]
     profit_target_pct:float=Field(ge=0,le=100)
