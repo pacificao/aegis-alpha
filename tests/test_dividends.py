@@ -12,6 +12,7 @@ def test_recovery_estimate_requires_twelve_events_and_uses_trading_sessions():
     bars={date(2026,1,1):10,date(2026,1,2):9,date(2026,1,5):10}
     result=recovery_estimate([date(2026,1,2)],bars,date(2026,2,1))
     assert result["estimated_recovery_days"] is None and result["recovery_observations"]==1
+    assert result["historical_dividend_events"]==1 and result["price_history_days"]==3
     result=recovery_estimate([date(2026,1,2)],bars,date(2026,2,1),minimum_observations=1)
     assert result["estimated_recovery_days"]==2 and result["recovery_probability_pct"]==100
 

@@ -316,3 +316,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 ## Briefing benchmark freshness gate (2026-08-21)
 
 - Pre-market and post-market delivery now performs a bounded, read-only Alpaca refresh for SPY, QQQ, and IWM immediately before rendering. Comparisons use one deduplicated adjusted close per completed session, so duplicate provider records cannot distort returns. Refresh failure remains fail-closed with an evidence-unavailable message; no signal or order is inferred. Intraday quote ingestion remains separate from official completed-session briefing comparisons.
+
+
+## Dividend recovery evidence clarity (2026-08-21)
+
+- Corrected the Dividend Calendar ambiguous `0/12 events` label. The threshold measures usable recovery observations, which require both a historical dividend event and sufficient surrounding price history; it is not a count of loaded dividends.
+- Calendar events now expose dividend-event and price-day evidence separately. The UI explicitly reports `Price history pending` when dividends are present but prices are not, or shows usable observations, dividends, and price days together when evidence is incomplete.
+- Focused Dividend Farm tests passed 3/3 and the production frontend/backend images built successfully. Trading remains DISABLED.

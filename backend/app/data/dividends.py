@@ -18,7 +18,7 @@ def company_name(description: str | None, explicit: str | None = None) -> str | 
 
 
 def recovery_estimate(action_dates: list[date], bars: dict[date,float], today: date, minimum_observations: int = 12) -> dict:
-    ordered=sorted(bars)
+    ordered=sorted(bars);historical_events=len(set(day for day in action_dates if day<today))
     recoveries=[];drawdowns=[];observations=0
     for ex_date in sorted(set(day for day in action_dates if day < today)):
         prior=[day for day in ordered if day < ex_date]
@@ -37,7 +37,7 @@ def recovery_estimate(action_dates: list[date], bars: dict[date,float], today: d
     else:
         status="ESTIMATED";estimate=round(float(median(recoveries)),1)
     latest=bars[ordered[-1]] if ordered else None
-    return {"estimated_recovery_days":estimate,"recovery_p90_days":_percentile_nearest_rank(recoveries,0.90),"recovery_observations":observations,"recovery_probability_pct":probability,"maximum_historical_drawdown_pct":round(max(drawdowns),2) if drawdowns else None,"recovery_status":status,"reference_price":latest}
+    return {"historical_dividend_events":historical_events,"price_history_days":len(ordered),"estimated_recovery_days":estimate,"recovery_p90_days":_percentile_nearest_rank(recoveries,0.90),"recovery_observations":observations,"recovery_probability_pct":probability,"maximum_historical_drawdown_pct":round(max(drawdowns),2) if drawdowns else None,"recovery_status":status,"reference_price":latest}
 
 
 def dividend_safety_assessment(evidence: dict, minimum_observations: int = 12) -> dict:
@@ -55,7 +55,7 @@ def dividend_safety_assessment(evidence: dict, minimum_observations: int = 12) -
     safety=max(1,min(100,round(score)))
     confidence="HIGH" if observations>=24 else "MEDIUM" if observations>=minimum_observations else "LOW"
     if observations<minimum_observations:
-        recommendation="INSUFFICIENT_DATA";reason=f"No buy planned; {observations}/{minimum_observations} historical dividend events available."
+        recommendation="INSUFFICIENT_DATA";reason=f"No buy planned; {observations}/{minimum_observations} recovery observations available."
     elif safety>=75:
         recommendation="RESEARCH_CANDIDATE";reason="No buy planned; candidate merits strategy and deterministic risk review."
     elif safety>=50:
