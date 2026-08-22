@@ -716,7 +716,13 @@ def controlled_live_readiness(_:Principal=Depends(current_principal),db:Session=
     config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"));gateway=BrokerGatewayClient(settings).status();snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()));controls=db.get(RiskControlState,1);now=datetime.now(UTC);age=None
     if snapshot:
         observed=snapshot.source_observed_at if snapshot.source_observed_at.tzinfo else snapshot.source_observed_at.replace(tzinfo=UTC);age=max(0,int((now-observed).total_seconds()))
-    phase10=db.scalar(select(Phase).where(Phase.number==10));ftp_task=db.scalar(select(Task).where(Task.phase_id==phase10.id,Task.ordinal==9)) if phase10 else None;gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":bool(gateway.get("execution_adapter_deployed")),"ftp_port_remediated":bool(ftp_task and ftp_task.status==TaskStatus.COMPLETE),"operator_live_authorization":False}
+    phases={number:db.scalar(select(Phase).where(Phase.number==number)) for number in (10,11,12)}
+    tasks={number:{row.ordinal:row.status for row in db.scalars(select(Task).where(Task.phase_id==phase.id)).all()} if phase else {} for number,phase in phases.items()}
+    required_evolution={1,2,3,4,5,13,14,15,16,17}
+    phase10_acceptance=all(tasks[10].get(i)==TaskStatus.COMPLETE for i in range(1,10))
+    autonomy_acceptance=bool(tasks[11]) and all(value==TaskStatus.COMPLETE for value in tasks[11].values())
+    evolution_acceptance=all(tasks[12].get(i)==TaskStatus.COMPLETE for i in required_evolution)
+    gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":bool(gateway.get("execution_adapter_deployed")),"ftp_port_remediated":tasks[10].get(9)==TaskStatus.COMPLETE,"controlled_live_acceptance":phase10_acceptance,"autonomy_acceptance":autonomy_acceptance,"evolution_safety_acceptance":evolution_acceptance,"operator_live_authorization":False}
     return {"paper_trial_ready":all(gates[k] for k in ("single_account_selected","broker_snapshot_present","broker_snapshot_fresh","risk_controls_clear","human_approval_ledger")),"live_ready":all(gates.values()),"gates":gates,"snapshot_age_seconds":age,"mode":"CONTROLLED_TRIAL","order_submission_available":False,"trading":"DISABLED"}
 
 @app.get("/api/controlled-live/intents")
