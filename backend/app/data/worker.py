@@ -3,13 +3,16 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from datetime import datetime
 from ..candidate_scanner import scan_batch
 from ..broker_sync.service import synchronize
 from ..config import get_settings
 from ..database import SessionLocal
 from ..gateway import BrokerGatewayClient
 from ..models import BrokerConnectionConfig
+from ..planning import expire_missed_plans
 from sqlalchemy import select
+from .calendar import EASTERN
 from .queue import run_batch
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s ingestion-worker %(message)s")
 
@@ -40,6 +43,13 @@ def _run_broker_sync(settings)->None:
     except Exception:logging.exception("broker_sync_failed")
     finally:db.close()
 
+def _expire_plans()->None:
+    db=SessionLocal()
+    try:
+        if expired:=expire_missed_plans(db,datetime.now(EASTERN).date()):logging.info("expired_plans=%s released_reservations=true",expired)
+    except Exception:logging.exception("plan_expiry_failed")
+    finally:db.close()
+
 def main()->None:
     parser=argparse.ArgumentParser();parser.add_argument("--once",action="store_true");args=parser.parse_args();settings=get_settings()
     if not settings.ingestion_worker_enabled and not args.once:
@@ -48,6 +58,7 @@ def main()->None:
     next_candidate_scan=0.0
     next_broker_sync=0.0
     while True:
+        _expire_plans()
         _run_ingestion(settings)
         if settings.broker_sync_enabled and time.monotonic()>=next_broker_sync:
             _run_broker_sync(settings);next_broker_sync=time.monotonic()+settings.broker_sync_interval_seconds
