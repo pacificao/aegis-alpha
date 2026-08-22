@@ -515,6 +515,9 @@ def risk_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db
 @app.post("/api/risk/assessments",status_code=201)
 def create_risk_assessment(payload:RiskAssessmentRequest,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
     if payload.strategy_decision_id is not None and db.get(StrategyDecision,payload.strategy_decision_id) is None:raise HTTPException(status_code=404,detail="Strategy decision not found")
+    instrument=db.scalar(select(Instrument).where(Instrument.symbol==payload.symbol));metadata=(instrument.metadata_json or {}) if instrument else {};now=datetime.now(UTC);session=market_session(now.astimezone(EASTERN).date());opened=datetime.fromisoformat(session["open_at"]) if session["open_at"] else None;closed=datetime.fromisoformat(session["close_at"]) if session["close_at"] else None
+    fractional_eligible=bool(instrument and instrument.active and instrument.asset_type in {"EQUITY","ETF"} and instrument.exchange.upper() not in {"OTC","PINK","GREY"} and metadata.get("robinhood_validation_status")=="VALIDATED")
+    payload=payload.model_copy(update={"fractional_eligible":fractional_eligible,"regular_session":bool(opened and closed and opened<=now<=closed)})
     try:row=assess_risk(db,payload,principal.username)
     except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
     return serialize_risk(row)
@@ -655,6 +658,7 @@ def create_planned_trade(payload:PlannedTradeCreate,principal:Principal=Depends(
     if not market_session(payload.planned_entry_date)["is_open"]:raise HTTPException(status_code=409,detail="Planned entry date is not an exchange session")
     if db.scalar(select(PlannedTrade).where(PlannedTrade.strategy_decision_id==decision.id,PlannedTrade.status.in_(ACTIVE_PLAN_STATUSES))):raise HTTPException(status_code=409,detail="Strategy decision already has an active capital reservation")
     notional=round(payload.quantity*payload.reference_price,2);capacity=planned_capacity(db)
+    if notional<1:raise HTTPException(status_code=409,detail="Planned equity buy must reserve at least $1")
     if notional>capacity["deployable_cash"]:raise HTTPException(status_code=409,detail="Planned trade exceeds unreserved deployable cash")
     frozen={"strategy_decision_id":decision.id,"symbol":decision.symbol,"side":"BUY","quantity":payload.quantity,"reference_price":payload.reference_price,"reserved_notional":notional,"planned_entry_date":payload.planned_entry_date.isoformat(),"rationale":payload.rationale,"trading":"DISABLED"}
     row=PlannedTrade(strategy_decision_id=decision.id,symbol=decision.symbol,side="BUY",quantity=payload.quantity,reference_price=payload.reference_price,reserved_notional=notional,planned_entry_date=payload.planned_entry_date,status="PLANNED",rationale=payload.rationale,plan_checksum=canonical_checksum(frozen),notification_status="PENDING",notification_event="PLAN_CREATED",created_by=principal.username)
@@ -675,8 +679,9 @@ def revalidate_planned_trade(plan_id:int,payload:PlannedTradeRevalidate,principa
     row=db.get(PlannedTrade,plan_id)
     if row is None:raise HTTPException(status_code=404,detail="Planned trade not found")
     if row.status not in {"PLANNED","REVALIDATION_BLOCKED"}:raise HTTPException(status_code=409,detail="Plan is not awaiting entry-session revalidation")
-    today=datetime.now(EASTERN).date()
-    if today!=row.planned_entry_date or not market_session(today)["is_open"]:
+    now=datetime.now(UTC);today=now.astimezone(EASTERN).date()
+    session=market_session(today);opened=datetime.fromisoformat(session["open_at"]) if session["open_at"] else None;closed=datetime.fromisoformat(session["close_at"]) if session["close_at"] else None
+    if today!=row.planned_entry_date or not opened or not closed or not opened<=now<=closed:
         if today>row.planned_entry_date:row.status="EXPIRED"
         else:row.status="REVALIDATION_BLOCKED"
         row.revalidation_detail="ENTRY_SESSION_NOT_CURRENT";row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED";db.commit()

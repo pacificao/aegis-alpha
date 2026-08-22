@@ -17,7 +17,7 @@ from mcp import ClientSession
 from mcp.client.auth import OAuthClientProvider
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import OAuthClientMetadata
-from pydantic import AnyUrl, BaseModel, Field
+from pydantic import AnyUrl, BaseModel, Field, model_validator
 
 from .policy import MARKET_DATA_TOOLS, READ_ONLY_TOOLS, SENSITIVE_ARGUMENT_KEYS, contains_sensitive_argument, enforce_tool_allowed, parse_loopback_callback, validate_authorization_url
 from .storage import EncryptedFileTokenStorage
@@ -421,6 +421,10 @@ class ExecutionRequest(BaseModel):
     time_in_force:Literal["GFD"]="GFD"
     intent_checksum:str=Field(min_length=64,max_length=64)
     approval_checksum:str=Field(min_length=64,max_length=64)
+    @model_validator(mode="after")
+    def minimum_notional(self):
+        if self.quantity*self.limit_price<1:raise ValueError("Robinhood equity order notional must be at least $1")
+        return self
 
 def _schema_summary(schema:dict)->dict:
     properties=schema.get("properties",{})

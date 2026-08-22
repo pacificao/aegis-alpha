@@ -9,7 +9,7 @@ def evaluate(policy:dict[str,Any],proposal:dict[str,Any],controls:dict[str,bool]
     """Evaluate a frozen proposal/snapshot. No I/O, broker, AI, or execution dependency."""
     now=(now or datetime.now(UTC)).astimezone(UTC)
     side=proposal["side"]; quantity=float(proposal["quantity"]); price=float(proposal["price"]); reference=float(proposal["reference_price"])
-    notional=quantity*price; portfolio=float(proposal["portfolio_value"]); buying_power=float(proposal["buying_power"])
+    notional=quantity*price; fractional=abs(quantity-round(quantity))>1e-9; portfolio=float(proposal["portfolio_value"]); buying_power=float(proposal["buying_power"])
     increase=notional if side=="BUY" else 0.0
     projected_position=float(proposal["current_position_value"])+increase
     projected_exposure=float(proposal["total_exposure_value"])+increase
@@ -25,6 +25,9 @@ def evaluate(policy:dict[str,Any],proposal:dict[str,Any],controls:dict[str,bool]
       _check("KILL_SWITCH_CLEAR",not controls["kill_switch_engaged"],controls["kill_switch_engaged"],False,"Global kill switch must be clear"),
       _check("CIRCUIT_BREAKER_CLEAR",not controls["circuit_breaker_engaged"],controls["circuit_breaker_engaged"],False,"Circuit breaker must be clear"),
       _check("ORDER_QUANTITY",0<quantity<=policy["max_order_quantity"],quantity,policy["max_order_quantity"],"Quantity must be positive and bounded"),
+      _check("MINIMUM_NOTIONAL",notional>=float(policy.get("min_order_notional",1.0)),notional,policy.get("min_order_notional",1.0),"Robinhood equity orders require at least $1 notional"),
+      _check("FRACTIONAL_ELIGIBILITY",not fractional or bool(proposal.get("fractional_eligible")),proposal.get("fractional_eligible"),True,"Fractional quantity requires Robinhood-validated NMS candidate eligibility; broker review is final"),
+      _check("FRACTIONAL_SESSION",not fractional or bool(proposal.get("regular_session")),proposal.get("regular_session"),True,"Fractional order requires a verified regular market session"),
       _check("ORDER_NOTIONAL",0<notional<=policy["max_order_notional"],notional,policy["max_order_notional"],"Order notional limit"),
       _check("PRICE_SANITY",0<price and deviation<=policy["max_price_deviation_bps"],round(deviation,6),policy["max_price_deviation_bps"],"Price deviation from reference"),
       _check("POSITION_LIMIT",projected_position<=position_limit,projected_position,position_limit,"Projected position limit (controlled micro-account exception)" if micro_trial else "Projected position limit"),

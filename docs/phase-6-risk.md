@@ -6,6 +6,8 @@ Every assessment evaluates the global kill switch, circuit breaker, quantity, no
 
 For the explicitly selected Dividend Farm controlled trial only, portfolios below $100 use a deterministic $1 maximum position-value cap so Robinhood fractional-order minimums can be tested. At $100 and above, the strategy reverts to its 1% maximum. The overlay cannot relax buying power, portfolio/sector/correlation exposure, loss, drawdown, volatility, freshness, duplicate, breaker, kill-switch, approval, or execution controls.
 
+Fractional equity quantities are supported. Risk requires at least $1 notional, verified NMS fractional eligibility, and a verified regular market session; otherwise it rejects the proposal. Planning and simulation use fractional quantities rather than requiring a whole share. Broker review remains authoritative and may reject securities that are temporarily or permanently ineligible.
+
 Proposal identifiers and policy-plus-request checksums provide duplicate prevention and reproducibility. Identical requests return the persisted assessment; reuse of an identifier with changed content is rejected.
 
 `AUTHORIZED` means only that supplied frozen facts passed the policy. All responses remain `executable=false` and `trading=DISABLED`. Control mutations require authentication and CSRF and create audit activity. No broker credential or OAuth material enters this subsystem.

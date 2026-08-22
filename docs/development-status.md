@@ -365,3 +365,11 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Diagnosed all 23 host zombie processes as exited Python health checks parented to Uvicorn PID 1 in the local broker-gateway container. Enabled Docker init in both the main Compose service and dedicated-broker bootstrap template, recreated only the local gateway, and verified `docker-init` is PID 1 with Uvicorn as its child. Host zombie count fell from 23 to 0.
 - Replaced startup-only Nginx upstream DNS resolution with Docker embedded DNS, shared upstream zones, ten-second validity, and runtime `resolve` for frontend, backend, and the local gateway. Nginx configuration validation passed.
 - Deliberately recreated backend and frontend without restarting Nginx. The Nginx container ID and start timestamp remained unchanged; public `/health` returned healthy with trading disabled and `/login` returned HTTP 200. This removes the persistent stale-container-IP 502 failure mode. A single replica may still have a brief unavailable window during replacement, but Nginx now recovers automatically when the healthy replacement registers.
+
+## Fractional-share safety contract (2026-08-22)
+
+- Confirmed that strategy plans, controlled intents, paper orders, execution requests and reconciled fills use fractional quantities; whole-share ownership is not required.
+- Added a deterministic $1 minimum order-notional check at planning, RiskEngine authorization and broker-gateway execution boundaries. Sub-dollar orders fail closed even if an upstream caller is defective.
+- Fractional orders now require an active Robinhood-validated, exchange-listed equity or ETF candidate and the actual regular NYSE session. The backend derives these facts from trusted instrument metadata and the exchange calendar rather than accepting caller claims; the official broker pre-trade review remains the final eligibility authority.
+- Dividend Farm laboratory sizing now preserves fractional shares instead of rounding down to whole shares, including micro-account research, while discarding simulated orders below $1.
+- Backend regression tests passed 76/76 and broker-gateway tests passed 37/37. Trading remains `DISABLED`.

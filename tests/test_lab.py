@@ -48,8 +48,12 @@ def test_split_adjusts_open_position_without_creating_capital():
  actions=[Action(start+timedelta(days=2),"XYZ","DIVIDEND",1),Action(start+timedelta(days=4),"XYZ","SPLIT",2)]
  result=simulate(bars,actions,{**config(),"symbols":["XYZ"],"benchmark_symbol":"XYZ","exit_method":"FIXED_5"})
  assert result["metrics"]["trade_count"]==1
- assert result["trades"][0]["shares"]==18
+ assert abs(result["trades"][0]["shares"]-19.98)<.01
  assert result["trades"][0]["exit_reason"]=="FIXED_EXIT"
+
+def test_small_account_backtest_uses_fractional_shares_above_one_dollar():
+ bars,actions=fixtures();result=simulate(bars,actions,{**config(),"initial_capital":5,"commission_per_trade":0,"max_position_pct":25,"max_allocation_pct":25})
+ assert result["trades"] and 0<result["trades"][0]["shares"]<1
 
 def test_lab_api_persists_reproducible_artifact():
  from sqlalchemy import select
