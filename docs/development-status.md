@@ -392,3 +392,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Dividend Calendar now reports the active immutable strategy decision and exact reason codes instead of presenting recovery-only research scoring as plan eligibility.
 - Scanner capacity accounting no longer lets versions with no due instruments consume the bounded scan allowance, and incomplete specifications are skipped safely.
 - Regression suite passed 79/79 and the production frontend build passed. Trading remains `DISABLED`; controlled-live acceptance and explicit authorization remain separate prerequisites.
+
+
+## Scheduled corporate-action quality correction (2026-08-22)
+
+- Future-dated corporate actions such as announced ex-dividend and payable dates are valid scheduled evidence and no longer produce FUTURE_TIMESTAMP findings.
+- Migration 0023 preserves the 98 historical findings as RESOLVED, restores affected corporate-action records to VALID, and the operator-facing quality count now reports only actionable unresolved findings.
+- Verified migration head 0023_scheduled_quality, 18,920 valid corporate-action records, zero actionable issues, healthy public backend, and trading remains DISABLED.
