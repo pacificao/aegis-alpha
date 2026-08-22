@@ -323,3 +323,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Corrected the Dividend Calendar ambiguous `0/12 events` label. The threshold measures usable recovery observations, which require both a historical dividend event and sufficient surrounding price history; it is not a count of loaded dividends.
 - Calendar events now expose dividend-event and price-day evidence separately. The UI explicitly reports `Price history pending` when dividends are present but prices are not, or shows usable observations, dividends, and price days together when evidence is incomplete.
 - Focused Dividend Farm tests passed 3/3 and the production frontend/backend images built successfully. Trading remains DISABLED.
+
+
+## Dividend-priority ingestion scheduling (2026-08-21)
+
+- Preserved every queued dataset while changing ticker-completion cohort selection to prioritize known upcoming ex-dividend events from nearest to latest, then established historical dividend payers, then securities with no known dividend history. Stocks, ETFs, and other validated security types use the same evidence-based ordering.
+- Control jobs and Robinhood universe validation retain reserved worker capacity, provider quotas remain enforced, and ordering changes neither stored data nor the trading-disabled boundary. Symbols with unknown dividend status naturally move forward if later provider evidence identifies an ex-dividend event.
+- Focused ingestion queue tests passed 8/8, including nearest-ex-date ordering and discovery-starvation protection.
