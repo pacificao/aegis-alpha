@@ -180,6 +180,20 @@ class StrategyDecision(Base):
     inputs: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+class CandidateScanState(Base):
+    __tablename__ = "candidate_scan_states"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version_id: Mapped[int] = mapped_column(ForeignKey("strategy_versions.id", ondelete="CASCADE"), index=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"), index=True)
+    last_decision_id: Mapped[int | None] = mapped_column(ForeignKey("strategy_decisions.id", ondelete="SET NULL"), nullable=True)
+    evidence_checksum: Mapped[str] = mapped_column(String(64), default="")
+    outcome: Mapped[str] = mapped_column(String(12), default="NOT_READY", index=True)
+    detail: Mapped[str] = mapped_column(String(255), default="")
+    last_scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    next_scan_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    __table_args__ = (UniqueConstraint("version_id", "instrument_id", name="uq_candidate_scan_version_instrument"),)
+
 class LabRun(Base):
     __tablename__="lab_runs"
     id:Mapped[int]=mapped_column(Integer,primary_key=True)

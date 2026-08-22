@@ -26,7 +26,7 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .models import CandidateScanState, DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
 from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, PlannedTradeCancel, PlannedTradeCreate, PlannedTradeRevalidate, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import EASTERN, dividend_entry_plan, market_session, next_sessions, sessions
@@ -331,7 +331,9 @@ def data_status(_: Principal = Depends(current_principal), db: Session = Depends
 
 @app.get("/api/data/queue")
 def data_queue_status(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
-    return queue_status(db)
+    value=queue_status(db);outcomes=dict(db.execute(select(CandidateScanState.outcome,func.count()).group_by(CandidateScanState.outcome)).all())
+    value["candidate_scanner"]={"enabled":settings.candidate_scanner_enabled,"interval_seconds":settings.candidate_scanner_interval_seconds,"batch_size":settings.candidate_scanner_batch_size,"tracked":sum(outcomes.values()),"outcomes":outcomes,"last_scan_at":db.scalar(select(func.max(CandidateScanState.last_scanned_at))),"risk_authorized":False,"executable":False,"trading":"DISABLED"}
+    return value
 
 @app.post("/api/data/queue/seed")
 def data_queue_seed(_: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
