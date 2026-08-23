@@ -14,6 +14,9 @@ class BrokerGatewayClient:
             response = httpx.request(method, f"{self.base_url}{path}", headers=self.headers, json=json, timeout=35)
             response.raise_for_status()
             return response.json()
+        except httpx.HTTPStatusError as exc:
+            status="REJECTED" if exc.response.status_code in {409,422} else "BLOCKED" if exc.response.status_code==403 else "ERROR"
+            return {"status":status,"detail":"Broker gateway rejected or unavailable","trading":"DISABLED"}
         except (httpx.HTTPError, ValueError):
             return {"status": "ERROR", "detail": "Broker gateway unavailable", "trading": "DISABLED", "mode": "READ_ONLY"}
 
@@ -38,6 +41,9 @@ class BrokerGatewayClient:
 
     def execution_place(self, payload: dict) -> dict:
         return self._request("POST", "/internal/execution/place", json=payload)
+
+    def execution_cancel(self, payload: dict) -> dict:
+        return self._request("POST", "/internal/execution/cancel", json=payload)
 
     def start_authorization(self) -> dict:
         return self._request("POST", "/internal/connect/start")

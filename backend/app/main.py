@@ -26,8 +26,8 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import CandidateScanState, DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
-from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, PlannedTradeCancel, PlannedTradeCreate, PlannedTradeRevalidate, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
+from .models import CandidateScanState, DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, LiveTradingAuthorization, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, ControlledExecutionRecovery, ControlledExecutionCancel, LiveTradingAuthorizationUpdate, PlannedTradeCancel, PlannedTradeCreate, PlannedTradeRevalidate, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import EASTERN, dividend_entry_plan, market_session, next_sessions, sessions
 from .data.providers import ProviderError
@@ -40,6 +40,7 @@ from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
 from .execution.service import reconcile as reconcile_execution
+from .execution.live import authorization_effective, execute as execute_live, reconcile_from_snapshot, serialize_authorization
 from .intelligence import validate_artifact, consensus
 from .ai_verifier import CodexVerifier,VerifierUnavailable
 from .paper.service import execute as execute_paper, snapshot as paper_snapshot
@@ -54,7 +55,7 @@ started_at = time.monotonic()
 async def lifespan(_: FastAPI):
     with SessionLocal() as db:
         seed_roadmap(db)
-    log.info("application_started", trading_enabled=False)
+    log.info("application_started", trading_enabled=get_settings().aegis_trading_enabled)
     yield
     engine.dispose()
 
@@ -88,7 +89,7 @@ class LoginRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "aegis-backend", "version": settings.aegis_version, "trading": "DISABLED"}
+    return {"status":"ok","service":"aegis-backend","version":settings.aegis_version,"trading":"CONFIGURED" if settings.aegis_trading_enabled else "DISABLED"}
 
 
 @app.post("/api/auth/login")
@@ -135,7 +136,7 @@ def api_status(_: Principal = Depends(current_principal), db: Session = Depends(
     postgres, redis_status = service_checks(db)
     tasks = db.scalars(select(Task)).all()
     complete = sum(task.status == TaskStatus.COMPLETE for task in tasks)
-    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 9, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": BrokerGatewayClient(settings).status()["status"], "trading": "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
+    return {"version": settings.aegis_version, "environment": settings.aegis_env, "current_phase": 9, "overall_completion": round(complete * 100 / len(tasks)) if tasks else 0, "backend": "HEALTHY", "postgresql": postgres, "redis": redis_status, "robinhood": (gateway:=BrokerGatewayClient(settings).status())["status"], "trading": "ENABLED" if authorization_effective(db.get(LiveTradingAuthorization,1),settings,gateway) else "DISABLED", "uptime_seconds": round(time.monotonic() - started_at)}
 
 
 def phase_status(tasks: list[Task]) -> TaskStatus:
@@ -521,7 +522,8 @@ def risk_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db
     policy=db.scalar(select(RiskPolicy).where(RiskPolicy.active.is_(True)).order_by(RiskPolicy.version.desc()));controls=db.get(RiskControlState,1)
     if policy is None or controls is None:raise HTTPException(status_code=503,detail="Risk controls are not initialized")
     counts=dict(db.execute(select(RiskAssessment.outcome,func.count()).group_by(RiskAssessment.outcome)).all())
-    return {"policy":{"id":policy.id,"version":policy.version,"name":policy.name,"configuration":policy.configuration,"checksum":policy.checksum},"controls":{"kill_switch_engaged":controls.kill_switch_engaged,"circuit_breaker_engaged":controls.circuit_breaker_engaged,"reason":controls.reason,"updated_by":controls.updated_by,"updated_at":controls.updated_at},"assessment_counts":counts,"execution_available":False,"trading":"DISABLED"}
+    gateway=BrokerGatewayClient(settings).status();available=authorization_effective(db.get(LiveTradingAuthorization,1),settings,gateway)
+    return {"policy":{"id":policy.id,"version":policy.version,"name":policy.name,"configuration":policy.configuration,"checksum":policy.checksum},"controls":{"kill_switch_engaged":controls.kill_switch_engaged,"circuit_breaker_engaged":controls.circuit_breaker_engaged,"reason":controls.reason,"updated_by":controls.updated_by,"updated_at":controls.updated_at},"assessment_counts":counts,"execution_available":available,"trading":"ENABLED" if available else "DISABLED"}
 
 @app.post("/api/risk/assessments",status_code=201)
 def create_risk_assessment(payload:RiskAssessmentRequest,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
@@ -739,6 +741,31 @@ def portfolio_history(limit:int=Query(default=500,ge=2,le=2000),_:Principal=Depe
     values=[p["portfolio_value"] for p in points if p["portfolio_value"] is not None];change_pct=((values[-1]/values[0]-1)*100) if len(values)>1 and values[0] else None
     return {"points":points,"snapshot_count":len(points),"change_pct":change_pct,"direction":"UP" if change_pct is not None and change_pct>0 else "DOWN" if change_pct is not None and change_pct<0 else "FLAT" if change_pct==0 else "BASELINE","trading":"DISABLED"}
 
+@app.get("/api/controlled-live/authorization")
+def live_authorization(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    gateway=BrokerGatewayClient(settings).status();row=db.get(LiveTradingAuthorization,1)
+    return serialize_authorization(row,settings,gateway)
+
+@app.patch("/api/controlled-live/authorization")
+def update_live_authorization(payload:LiveTradingAuthorizationUpdate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(LiveTradingAuthorization,1)
+    if row is None:
+        row=LiveTradingAuthorization(id=1,enabled=False,max_order_notional=1,authorized_by="system",reason="Initialized disabled");db.add(row)
+    now=datetime.now(UTC)
+    if payload.enabled:
+        if payload.confirmation!="AUTHORIZE CONTROLLED LIVE TRADING":raise HTTPException(status_code=409,detail="Exact live authorization phrase required")
+        gateway=BrokerGatewayClient(settings).status()
+        if not settings.aegis_trading_enabled or gateway.get("execution_enabled") is not True:raise HTTPException(status_code=409,detail="Backend and isolated gateway execution flags must be operator-enabled first")
+        controls=db.get(RiskControlState,1)
+        if not controls or controls.kill_switch_engaged or controls.circuit_breaker_engaged:raise HTTPException(status_code=409,detail="Risk controls must be clear")
+        row.enabled=True;row.max_order_notional=payload.max_order_notional;row.authorized_at=now;row.expires_at=now+timedelta(minutes=payload.duration_minutes);row.authorized_by=principal.username;row.reason=payload.reason;row.authorization_checksum=canonical_checksum({"authorized_by":principal.username,"authorized_at":now.isoformat(),"expires_at":row.expires_at.isoformat(),"max_order_notional":payload.max_order_notional,"reason":payload.reason})
+        action="controlled_live_authorized"
+    else:
+        if payload.confirmation!="DISABLE LIVE TRADING":raise HTTPException(status_code=409,detail="Exact disable phrase required")
+        row.enabled=False;row.expires_at=now;row.authorized_by=principal.username;row.reason=payload.reason;row.authorization_checksum=None;action="controlled_live_disabled"
+    db.add(DevelopmentActivity(actor=principal.username,action=action,entity_type="live_trading_authorization",entity_id=1,detail=f"enabled={row.enabled}; max_order_notional={row.max_order_notional:.2f}; expires_at={row.expires_at}; gateway_credentials_unavailable_to_aegis=true"));db.commit();db.refresh(row)
+    return serialize_authorization(row,settings,BrokerGatewayClient(settings).status())
+
 @app.get("/api/controlled-live/readiness")
 def controlled_live_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
     config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"));gateway=BrokerGatewayClient(settings).status();snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()));controls=db.get(RiskControlState,1);now=datetime.now(UTC);age=None
@@ -750,8 +777,8 @@ def controlled_live_readiness(_:Principal=Depends(current_principal),db:Session=
     phase10_acceptance=all(tasks[10].get(i)==TaskStatus.COMPLETE for i in range(1,10))
     autonomy_acceptance=bool(tasks[11]) and all(value==TaskStatus.COMPLETE for value in tasks[11].values())
     evolution_acceptance=all(tasks[12].get(i)==TaskStatus.COMPLETE for i in required_evolution)
-    gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":bool(gateway.get("execution_adapter_deployed")),"ftp_port_remediated":tasks[10].get(9)==TaskStatus.COMPLETE,"controlled_live_acceptance":phase10_acceptance,"autonomy_acceptance":autonomy_acceptance,"evolution_safety_acceptance":evolution_acceptance,"operator_live_authorization":False}
-    return {"paper_trial_ready":all(gates[k] for k in ("single_account_selected","broker_snapshot_present","broker_snapshot_fresh","risk_controls_clear","human_approval_ledger")),"live_ready":all(gates.values()),"gates":gates,"snapshot_age_seconds":age,"mode":"CONTROLLED_TRIAL","order_submission_available":False,"trading":"DISABLED"}
+    gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":bool(gateway.get("execution_adapter_deployed")),"ftp_port_remediated":tasks[10].get(9)==TaskStatus.COMPLETE,"controlled_live_acceptance":phase10_acceptance,"autonomy_acceptance":autonomy_acceptance,"evolution_safety_acceptance":evolution_acceptance,"operator_live_authorization":authorization_effective(db.get(LiveTradingAuthorization,1),settings,gateway,now)}
+    return {"paper_trial_ready":all(gates[k] for k in ("single_account_selected","broker_snapshot_present","broker_snapshot_fresh","risk_controls_clear","human_approval_ledger")),"live_ready":all(gates.values()),"gates":gates,"snapshot_age_seconds":age,"mode":"CONTROLLED_TRIAL","order_submission_available":all(gates.values()),"trading":"ENABLED" if all(gates.values()) else "DISABLED"}
 
 @app.get("/api/controlled-live/intents")
 def controlled_intents(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
@@ -816,9 +843,36 @@ def review_controlled_intent(intent_id:int,principal:Principal=Depends(csrf_prot
     return {"id":record.id,"intent_id":row.id,"status":record.status,"review_checksum":record.review_checksum,"order_placed":False,"executable":False,"trading":"DISABLED"}
 
 @app.post("/api/controlled-live/intents/{intent_id}/execute")
-def execute_controlled_intent(intent_id:int,_:Principal=Depends(csrf_protected)):
-    if not settings.aegis_trading_enabled:raise HTTPException(status_code=403,detail="Aegis trading is disabled; no broker order was submitted")
-    raise HTTPException(status_code=403,detail="Controlled-live operator authorization is not active")
+def execute_controlled_intent(intent_id:int,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    return execute_live(db,BrokerGatewayClient(settings),settings,intent_id,principal.username)
+
+@app.post("/api/controlled-live/intents/{intent_id}/cancel")
+def cancel_live_execution(intent_id:int,payload:ControlledExecutionCancel,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(ControlledTradeIntent,intent_id);record=db.scalar(select(ControlledExecutionRecord).where(ControlledExecutionRecord.intent_id==intent_id))
+    if not row or not record:raise HTTPException(status_code=404,detail="Execution record not found")
+    if record.status=="CANCEL_REQUESTED":return {"id":record.id,"status":record.status,"idempotent":True,"broker_called":False}
+    if record.status not in {"SUBMITTED","PARTIALLY_FILLED"}:raise HTTPException(status_code=409,detail="Order is not cancellable")
+    gateway=BrokerGatewayClient(settings);state=gateway.status()
+    if not settings.aegis_trading_enabled or state.get("execution_enabled") is not True:raise HTTPException(status_code=409,detail="Execution domain must remain enabled to cancel an open order")
+    config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"));order_ref=str((record.actual_order or {}).get("order_ref", ""))
+    if not config or not config.selected_account_ref or not order_ref:raise HTTPException(status_code=409,detail="Selected account or broker order reference unavailable")
+    result=gateway.execution_cancel({"selected_account_ref":config.selected_account_ref,"order_ref":order_ref,"intent_checksum":row.intent_checksum,"approval_checksum":row.approval_checksum})
+    if result.get("status")=="REJECTED":raise HTTPException(status_code=409,detail="Broker rejected cancellation; reconcile order state")
+    if result.get("status")!="CANCEL_REQUESTED":
+        controls=db.get(RiskControlState,1);controls.circuit_breaker_engaged=True;controls.reason="Automatic breaker: CANCELLATION_OUTCOME_UNKNOWN";controls.updated_by="execution-engine";record.status="UNKNOWN";record.reconciliation={"status":"ATTENTION","code":"CANCELLATION_OUTCOME_UNKNOWN","requires_human_attention":True};db.commit();raise HTTPException(status_code=502,detail="Cancellation outcome unknown; circuit breaker engaged")
+    record.status="CANCEL_REQUESTED";row.status="CANCEL_REQUESTED";record.reconciliation={**(record.reconciliation or {}),"cancellation":"REQUESTED","cancellation_reason":payload.reason};db.add(DevelopmentActivity(actor=principal.username,action="controlled_order_cancellation_requested",entity_type="controlled_execution_record",entity_id=record.id,detail=f"order_ref={order_ref}; operator_reason_recorded=true"));db.commit();return {"id":record.id,"status":record.status,"idempotent":False,"broker_called":True}
+
+@app.post("/api/controlled-live/intents/{intent_id}/recover")
+def recover_unknown_execution(intent_id:int,payload:ControlledExecutionRecovery,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    row=db.get(ControlledTradeIntent,intent_id);record=db.scalar(select(ControlledExecutionRecord).where(ControlledExecutionRecord.intent_id==intent_id))
+    if not row or not record:raise HTTPException(status_code=404,detail="Execution record not found")
+    if record.status not in {"UNKNOWN","RECONCILIATION_ATTENTION"}:raise HTTPException(status_code=409,detail="Execution is not awaiting operator recovery")
+    record.actual_order={**(record.actual_order or {}),"order_ref":payload.order_ref};db.add(DevelopmentActivity(actor=principal.username,action="controlled_execution_recovery_started",entity_type="controlled_execution_record",entity_id=record.id,detail="Operator supplied broker order reference; no order submission attempted"));db.commit()
+    return reconcile_from_snapshot(db,intent_id,principal.username)
+
+@app.post("/api/controlled-live/intents/{intent_id}/reconcile")
+def reconcile_controlled_intent(intent_id:int,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
+    return reconcile_from_snapshot(db,intent_id,principal.username)
 
 @app.post("/api/controlled-live/reconcile-fixture")
 def reconcile_controlled_fixture(intended:dict,actual:dict,fills:list[dict],_:Principal=Depends(csrf_protected)):
