@@ -1,5 +1,7 @@
 # Development Status
 
+- 2026-08-23: Production Trial now lists active planned orders and only offers intent creation from a linked, authorized deterministic RiskEngine assessment. It explicitly explains the pre-entry waiting state instead of exposing a raw risk ID or an empty unexplained workflow. Production build passed; no order was submitted.
+
 - Current phase: Phase 9 — Aegis Gateway COMPLETE; Phase 10 controlled-trial readiness is IN PROGRESS
 - Current version: `0.8.0-gateway`
 - Verified roadmap state: Phase 1 69/69 COMPLETE; Phase 2 8/8 COMPLETE; Phase 3 12/12 COMPLETE; Phase 4 10/10 COMPLETE; Phase 5 14/14 COMPLETE; Phase 6 14/14 COMPLETE; Phase 7 14/14 COMPLETE; Phase 8 6/6 COMPLETE; Phase 9 14/14 COMPLETE
