@@ -35,6 +35,7 @@ from .data.service import ingest as ingest_data, ingest_robinhood, status as dat
 from .data.queue import queue_status, seed_control_jobs
 from .data.dividends import company_name, dividend_safety_assessment, recovery_estimate
 from .seed import seed_roadmap
+from .dividend_payments import ZERO_PAYMENT_REASON, payable_fractional_dividend
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
@@ -669,6 +670,10 @@ def create_planned_trade(payload:PlannedTradeCreate,principal:Principal=Depends(
     if db.scalar(select(PlannedTrade).where(PlannedTrade.strategy_decision_id==decision.id,PlannedTrade.status.in_(ACTIVE_PLAN_STATUSES))):raise HTTPException(status_code=409,detail="Strategy decision already has an active capital reservation")
     notional=round(payload.quantity*payload.reference_price,2);capacity=planned_capacity(db)
     if notional<1:raise HTTPException(status_code=409,detail="Planned equity buy must reserve at least $1")
+    version=db.get(StrategyVersion,decision.version_id);scenario=db.get(StrategyScenario,version.scenario_id) if version else None
+    if scenario and scenario.strategy_type=="DIVIDEND_FARM":
+        payable,raw_dividend=payable_fractional_dividend(quantity=payload.quantity,dividend_per_share=decision.inputs.get("dividend_per_share"),notional=notional,event_yield_pct=decision.inputs.get("event_yield_pct"))
+        if not payable:raise HTTPException(status_code=409,detail=f"{ZERO_PAYMENT_REASON}: expected fractional dividend {raw_dividend} is below $0.005")
     if notional>capacity["deployable_cash"]:raise HTTPException(status_code=409,detail="Planned trade exceeds unreserved deployable cash")
     frozen={"strategy_decision_id":decision.id,"symbol":decision.symbol,"side":"BUY","quantity":payload.quantity,"reference_price":payload.reference_price,"reserved_notional":notional,"planned_entry_date":payload.planned_entry_date.isoformat(),"rationale":payload.rationale,"trading":"DISABLED"}
     row=PlannedTrade(strategy_decision_id=decision.id,symbol=decision.symbol,side="BUY",quantity=payload.quantity,reference_price=payload.reference_price,reserved_notional=notional,planned_entry_date=payload.planned_entry_date,status="PLANNED",rationale=payload.rationale,plan_checksum=canonical_checksum(frozen),notification_status="PENDING",notification_event="PLAN_CREATED",created_by=principal.username)
@@ -711,6 +716,14 @@ def revalidate_planned_trade(plan_id:int,payload:PlannedTradeRevalidate,principa
     capacity=planned_capacity(db,exclude_id=row.id)
     if row.reserved_notional>capacity["deployable_cash"]:
         row.status="REVALIDATION_BLOCKED";row.revalidation_detail="DEPLOYABLE_CASH_CHANGED";row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED";db.commit();raise HTTPException(status_code=409,detail="Deployable cash no longer covers the planned trade")
+    decision=db.get(StrategyDecision,row.strategy_decision_id);version=db.get(StrategyVersion,decision.version_id) if decision else None;scenario=db.get(StrategyScenario,version.scenario_id) if version else None
+    if scenario and scenario.strategy_type=="DIVIDEND_FARM":
+        risk_quantity=float(request.get("quantity",0));risk_notional=risk_quantity*float(request.get("price",0));inputs=decision.inputs or {}
+        payable,raw_dividend=payable_fractional_dividend(quantity=risk_quantity,dividend_per_share=inputs.get("dividend_per_share"),notional=risk_notional,event_yield_pct=inputs.get("event_yield_pct"))
+        if not payable:
+            row.status="REVALIDATION_BLOCKED";row.revalidation_detail=ZERO_PAYMENT_REASON;row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED"
+            db.add(DevelopmentActivity(actor=principal.username,action="planned_trade_revalidation_blocked",entity_type="planned_trade",entity_id=row.id,detail=f"reason={ZERO_PAYMENT_REASON}; expected_dividend={raw_dividend}; broker_called=false; trading=DISABLED"));db.commit()
+            raise HTTPException(status_code=409,detail=f"{ZERO_PAYMENT_REASON}: expected fractional dividend is below $0.005")
     row.final_risk_assessment_id=risk.id;row.status="READY_FOR_FINAL_APPROVAL";row.revalidated_at=datetime.now(UTC);row.revalidation_detail="ENTRY_SESSION_AND_RISK_REVALIDATED";row.notification_status="PENDING";row.notification_event="READY_FOR_FINAL_APPROVAL"
     db.add(DevelopmentActivity(actor=principal.username,action="planned_trade_revalidated",entity_type="planned_trade",entity_id=row.id,detail=f"risk_assessment={risk.id}; human_confirmation_required=true; executable=false; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row)
     return {"plan":serialize_planned_trade(row),"capacity":planned_capacity(db),"order_submitted":False}

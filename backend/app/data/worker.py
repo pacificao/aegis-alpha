@@ -11,7 +11,7 @@ from ..config import get_settings
 from ..database import SessionLocal
 from ..gateway import BrokerGatewayClient
 from ..models import BrokerConnectionConfig
-from ..planning import create_qualified_plans, expire_missed_plans
+from ..planning import create_qualified_plans, expire_missed_plans, reject_unpayable_plans
 from sqlalchemy import select
 from .calendar import EASTERN
 from .queue import run_batch
@@ -58,7 +58,8 @@ def _run_exit_monitor()->None:
 def _expire_plans()->None:
     db=SessionLocal()
     try:
-        if expired:=expire_missed_plans(db,datetime.now(EASTERN).date()):logging.info("expired_plans=%s released_reservations=true",expired)
+        rejected=reject_unpayable_plans(db);expired=expire_missed_plans(db,datetime.now(EASTERN).date())
+        if rejected or expired:logging.info("rejected_unpayable_plans=%s expired_plans=%s released_reservations=true",rejected,expired)
     except Exception:logging.exception("plan_expiry_failed")
     finally:db.close()
 
