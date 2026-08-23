@@ -422,3 +422,11 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Enforced the rule during automatic planning, operator-created planning, and final entry-session revalidation. Candidate evidence now preserves declared dividend per share for quantity-level calculation, with event yield as a deterministic fallback.
 - The login-independent lifecycle worker cancels previously active Dividend Farm plans that fail the gate, releases their reserved capital, emits an operator notification, and records an auditable development activity. No broker call is made.
 - Boundary and lifecycle regression tests cover just below $0.005, exactly $0.005, accepted plans, and automatic cancellation. Trading remains `DISABLED`.
+
+## Governed controlled-live execution boundary (2026-08-23)
+
+- Added migration `0026_live_authorization` and a short-lived operator authorization ledger. Backend and isolated-gateway flags remain disabled by default and neither flag alone grants execution.
+- The backend now requires a versioned ENTRY/EXIT decision, fresh exact deterministic RiskEngine authorization, immutable intent and human-approval checksums, clear kill switch/circuit breaker, selected single account, operator notional ceiling, and official Robinhood review before one idempotent placement attempt.
+- The gateway accepts only exact review, place and cancel routes. A broker-issued order reference and broker-returned order fields are required; unverifiable, mismatched or ambiguous outcomes engage the circuit breaker and block duplicate submission.
+- Fresh unattended account snapshots reconcile unfilled, partial and full fills. Overfills fail closed. Operator cancellation is idempotent, and unknown timeout recovery requires an exact broker order reference and explicit confirmation.
+- Production Trial exposes the gates, 15-minute/$1 operator authorization, submit-once, cancellation, reconciliation and unknown-outcome recovery controls. No real order was placed during development; both live flags remain false pending operator deployment and bounded acceptance.

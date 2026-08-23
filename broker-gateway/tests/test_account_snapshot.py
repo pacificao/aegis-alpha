@@ -36,3 +36,9 @@ def test_execution_schema_mapping_is_exact_and_bounded():
  try:ExecutionRequest(selected_account_ref="ref_0123456789abcdef01234567",symbol="SPY",side="BUY",quantity=0.001,limit_price=500,intent_checksum="a"*64,approval_checksum="b"*64);assert False
  except ValueError:pass
  assert _execution_arguments({"required":["unsupported"],"properties":{"unsupported":{}}},"private",payload) is None
+
+def test_execution_actual_order_requires_broker_reference():
+    from app.main import _actual_order
+    assert _actual_order({"symbol":"SPY","side":"buy","quantity":"0.002","type":"limit","price":"500"}) is None
+    actual=_actual_order({"id":"order-1","symbol":"SPY","side":"buy","quantity":"0.002","type":"limit","price":"500"})
+    assert actual["order_ref"]=="order-1" and actual["symbol"]=="SPY"

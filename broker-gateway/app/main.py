@@ -410,7 +410,7 @@ async def account_snapshot(payload: AccountSnapshotRequest):
 
 
 # Phase 10 explicit execution boundary. Review is non-ordering; placement is hard-disabled by default.
-_EXECUTION_TOOLS=frozenset({"review_equity_order","place_equity_order"})
+_EXECUTION_TOOLS=frozenset({"review_equity_order","place_equity_order","cancel_equity_order"})
 class ExecutionRequest(BaseModel):
     selected_account_ref:str=Field(pattern=r"^ref_[0-9a-f]{24}$")
     symbol:str=Field(pattern=r"^[A-Z]{1,6}$")
@@ -426,9 +426,28 @@ class ExecutionRequest(BaseModel):
         if self.quantity*self.limit_price<1:raise ValueError("Robinhood equity order notional must be at least $1")
         return self
 
+class CancellationRequest(BaseModel):
+    model_config={"extra":"forbid"}
+    selected_account_ref:str=Field(pattern=r"^ref_[a-f0-9]{24}$")
+    order_ref:str=Field(min_length=3,max_length=120,pattern=r"^[A-Za-z0-9_-]+$")
+    intent_checksum:str=Field(min_length=64,max_length=64)
+    approval_checksum:str=Field(min_length=64,max_length=64)
+
 def _schema_summary(schema:dict)->dict:
     properties=schema.get("properties",{})
     return {"required":[str(x)[:40] for x in schema.get("required",[])[:20]],"properties":{str(k)[:40]:{"type":v.get("type"),"format":v.get("format"),"enum":v.get("enum",[])[:20] if isinstance(v.get("enum"),list) else None} for k,v in list(properties.items())[:40] if isinstance(v,dict)}}
+
+def _actual_order(value:object)->dict|None:
+    if isinstance(value,dict):
+        order_ref=value.get("id",value.get("order_id",value.get("client_order_id")));symbol=value.get("symbol",value.get("ticker"));quantity=value.get("quantity",value.get("total_quantity"));side=value.get("side");order_type=value.get("order_type",value.get("type"));limit_price=value.get("limit_price",value.get("price"))
+        if all(item is not None for item in (order_ref,symbol,quantity,side,order_type,limit_price)):
+            return {"order_ref":str(order_ref),"symbol":symbol,"quantity":quantity,"side":side,"order_type":order_type,"limit_price":limit_price,"broker_evidence":value}
+        for child in value.values():
+            if (found:=_actual_order(child)) is not None:return found
+    elif isinstance(value,list):
+        for child in value:
+            if (found:=_actual_order(child)) is not None:return found
+    return None
 
 def _execution_arguments(schema:dict,number:str,payload:ExecutionRequest)->dict|None:
     values={"account_number":number,"account_id":number,"symbol":payload.symbol,"ticker":payload.symbol,"side":payload.side.lower(),"quantity":payload.quantity,"order_type":"limit","type":"limit","limit_price":payload.limit_price,"price":payload.limit_price,"time_in_force":payload.time_in_force.lower(),"tif":payload.time_in_force.lower()}
@@ -482,5 +501,22 @@ async def execution_place(payload:ExecutionRequest):
         if args is None:raise HTTPException(status_code=409,detail="Official placement schema is unsupported")
         result=await session.call_tool("place_equity_order",args)
         if result.isError:raise HTTPException(status_code=409,detail="Official order placement rejected")
-        safe=_sanitize(tool_payload(result));return {"status":"SUBMITTED","actual_order":safe,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"order_placed":True,"trading":"ENABLED"}
+        safe=_sanitize(tool_payload(result));actual=_actual_order(safe)
+        if actual is None:return {"status":"SUBMITTED_UNVERIFIED","actual_order":safe,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"order_placed":True,"trading":"ATTENTION"}
+        return {"status":"SUBMITTED","actual_order":actual,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"order_placed":True,"trading":"ENABLED"}
     return await _with_official_session(place)
+
+@app.post("/internal/execution/cancel",dependencies=[Depends(internal_auth)])
+async def execution_cancel(payload:CancellationRequest):
+    if not EXECUTION_ENABLED:raise HTTPException(status_code=403,detail="Broker execution is disabled")
+    async def cancel(session):
+        advertised={tool.name:tool for tool in (await session.list_tools()).tools};tool=advertised.get("cancel_equity_order")
+        if tool is None:raise HTTPException(status_code=409,detail="Official cancellation tool unavailable")
+        accounts=_records(tool_payload(await call_read_only_tool(session,"get_accounts",{})));number=next((_account_number(a) for a in accounts if _account_number(a) and secrets.compare_digest(_opaque(_account_number(a)),payload.selected_account_ref)),None)
+        if not number:raise HTTPException(status_code=409,detail="Selected account unavailable")
+        values={"account_number":number,"account_id":number,"order_id":payload.order_ref,"id":payload.order_ref};properties=(tool.inputSchema or {}).get("properties",{});required=(tool.inputSchema or {}).get("required",[]);args={key:values[key] for key in properties if key in values}
+        if any(key not in args for key in required):raise HTTPException(status_code=409,detail="Official cancellation schema is unsupported")
+        result=await session.call_tool("cancel_equity_order",args)
+        if result.isError:raise HTTPException(status_code=409,detail="Official cancellation rejected")
+        return {"status":"CANCEL_REQUESTED","broker_evidence":_sanitize(tool_payload(result)),"order_ref":payload.order_ref,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"trading":"ENABLED"}
+    return await _with_official_session(cancel)

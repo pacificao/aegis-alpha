@@ -10,7 +10,8 @@ from ..broker_sync.service import synchronize
 from ..config import get_settings
 from ..database import SessionLocal
 from ..gateway import BrokerGatewayClient
-from ..models import BrokerConnectionConfig
+from ..models import BrokerConnectionConfig,ControlledExecutionRecord
+from ..execution.live import reconcile_from_snapshot
 from ..planning import create_qualified_plans, expire_missed_plans, reject_unpayable_plans
 from sqlalchemy import select
 from .calendar import EASTERN
@@ -44,6 +45,9 @@ def _run_broker_sync(settings)->None:
             logging.info("broker_sync=skipped reason=gateway_not_connected");return
         run=synchronize(db,client,"system:broker-sync",config.selected_account_ref)
         logging.info("broker_sync=%s snapshot_id=%s attempts=%s",run.status,run.snapshot_id,run.attempts)
+        for record in db.scalars(select(ControlledExecutionRecord).where(ControlledExecutionRecord.status.in_(("SUBMITTED","PARTIALLY_FILLED")))).all():
+            try:logging.info("execution_reconciliation=%s",reconcile_from_snapshot(db,record.intent_id,"system:broker-reconciliation"))
+            except Exception:logging.exception("execution_reconciliation_failed intent_id=%s",record.intent_id)
     except Exception:logging.exception("broker_sync_failed")
     finally:db.close()
 
