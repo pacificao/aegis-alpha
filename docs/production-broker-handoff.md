@@ -28,3 +28,7 @@ Robinhood's official Agentic Trading MCP can expose trading tools. The OAuth con
 ## Current dedicated target
 
 The prepared operator bootstrap targets Ubuntu 24.04 at private VPC address `10.124.0.4`, hostname `brokerage.aegis-alpha.pacificao.com`, and permits the Aegis server private address `10.124.0.3`. Nathan runs `scripts/bootstrap-broker-droplet.sh` as root from the DigitalOcean browser console. Review it before execution; it does not install an AI/development SSH credential.
+
+## Protected-main automatic updates
+
+After a reviewed release is promoted to protected `main`, the operator may install the root-owned broker-only updater from the DigitalOcean console with `bash /opt/aegis-broker/source/scripts/install-broker-auto-update.sh`. It checks `main` every five minutes, accepts fast-forward updates only, refuses dirty repositories, rebuilds only `broker-gateway`, verifies public health, records the deployed revision under `/var/lib/aegis-broker/deployment`, and rolls back a failed deployment. Production OAuth and gateway data directories are never replaced.
