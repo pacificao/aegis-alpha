@@ -49,7 +49,7 @@ class RobinhoodConfigOut(BaseModel):
     updated_at: datetime
 
 
-ParameterValue = bool | int | float | str | list[str]
+ParameterValue = bool | int | float | str | list[bool | int | float | str]
 
 
 class ScenarioBase(BaseModel):
@@ -252,6 +252,7 @@ class LabBacktestRequest(BaseModel):
     spread_bps:float=Field(ge=0,le=500)
     max_position_pct:float=Field(gt=0,le=10)
     max_allocation_pct:float=Field(gt=0,le=100)
+    min_dividend_event_pct:float=Field(ge=0,le=100)
     entry_days_before_ex_date:int=Field(ge=1,le=10)
     exit_method:Literal["PURCHASE_PRICE","PURCHASE_MINUS_DIVIDEND","PROFIT_TARGET","FIXED_5","FIXED_10","FIXED_15","FIXED_30","HISTORICAL_RECOVERY","VOLATILITY","HYBRID"]
     profit_target_pct:float=Field(ge=0,le=100)
@@ -283,6 +284,7 @@ class RiskAssessmentRequest(BaseModel):
     symbol:str=Field(min_length=1,max_length=16,pattern=r"^[A-Za-z0-9.-]+$")
     side:Literal["BUY","SELL"]
     quantity:float=Field(gt=0,le=1_000_000_000);price:float=Field(gt=0,le=1_000_000);reference_price:float=Field(gt=0,le=1_000_000)
+    fractional_eligible:bool=False;regular_session:bool=False
     portfolio_value:float=Field(gt=0,le=1_000_000_000_000);buying_power:float=Field(ge=0,le=1_000_000_000_000)
     current_position_value:float=Field(ge=0);total_exposure_value:float=Field(ge=0);sector_exposure_value:float=Field(ge=0);correlated_exposure_value:float=Field(ge=0)
     daily_pnl_pct:float=Field(ge=-100,le=1000);drawdown_pct:float=Field(ge=0,le=100);annualized_volatility_pct:float=Field(ge=0,le=1000)
@@ -305,7 +307,7 @@ class RiskControlUpdate(BaseModel):
 
 class RiskPolicyConfiguration(BaseModel):
     model_config=ConfigDict(extra="forbid")
-    max_position_pct:float=Field(gt=0,le=100);max_portfolio_exposure_pct:float=Field(gt=0,le=200);max_sector_exposure_pct:float=Field(gt=0,le=100);max_correlated_exposure_pct:float=Field(gt=0,le=200)
+    min_order_notional:float=Field(default=1.0,ge=1.0,le=1000);max_position_pct:float=Field(gt=0,le=100);max_portfolio_exposure_pct:float=Field(gt=0,le=200);max_sector_exposure_pct:float=Field(gt=0,le=100);max_correlated_exposure_pct:float=Field(gt=0,le=200)
     max_daily_loss_pct:float=Field(gt=0,le=100);max_drawdown_pct:float=Field(gt=0,le=100);max_annualized_volatility_pct:float=Field(gt=0,le=1000);max_buying_power_use_pct:float=Field(gt=0,le=100)
     max_order_notional:float=Field(gt=0,le=1_000_000_000);max_order_quantity:float=Field(gt=0,le=1_000_000_000);max_price_deviation_bps:float=Field(gt=0,le=10000)
     max_open_orders:int=Field(gt=0,le=100000);max_market_data_age_seconds:int=Field(gt=0,le=86400);max_proposal_age_seconds:int=Field(gt=0,le=86400)

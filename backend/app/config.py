@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     ingestion_worker_enabled: bool = False
     ingestion_worker_interval_seconds: int = Field(default=60, ge=10, le=3600)
     ingestion_worker_batch_size: int = Field(default=10, ge=1, le=100)
+    broker_sync_enabled: bool = False
+    broker_sync_interval_seconds: int = Field(default=300, ge=60, le=86_400)
+    candidate_scanner_enabled: bool = False
+    candidate_scanner_interval_seconds: int = Field(default=300, ge=60, le=86_400)
+    candidate_scanner_batch_size: int = Field(default=25, ge=1, le=100)
+    candidate_scanner_max_price_age_days: int = Field(default=7, ge=1, le=30)
     alpha_vantage_daily_limit: int = Field(default=25, ge=1, le=10000)
     openai_api_key: str = ""
     codex_verifier_enabled: bool = False

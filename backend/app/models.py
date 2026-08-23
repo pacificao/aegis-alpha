@@ -180,6 +180,20 @@ class StrategyDecision(Base):
     inputs: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+class CandidateScanState(Base):
+    __tablename__ = "candidate_scan_states"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version_id: Mapped[int] = mapped_column(ForeignKey("strategy_versions.id", ondelete="CASCADE"), index=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"), index=True)
+    last_decision_id: Mapped[int | None] = mapped_column(ForeignKey("strategy_decisions.id", ondelete="SET NULL"), nullable=True)
+    evidence_checksum: Mapped[str] = mapped_column(String(64), default="")
+    outcome: Mapped[str] = mapped_column(String(12), default="NOT_READY", index=True)
+    detail: Mapped[str] = mapped_column(String(255), default="")
+    last_scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    next_scan_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    __table_args__ = (UniqueConstraint("version_id", "instrument_id", name="uq_candidate_scan_version_instrument"),)
+
 class LabRun(Base):
     __tablename__="lab_runs"
     id:Mapped[int]=mapped_column(Integer,primary_key=True)
@@ -315,6 +329,16 @@ class PlannedTrade(Base):
     notification_status:Mapped[str]=mapped_column(String(20),default="PENDING",index=True);notification_event:Mapped[str]=mapped_column(String(32),default="PLAN_CREATED");notified_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     cancellation_reason:Mapped[str]=mapped_column(Text,default="");created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True);updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
 
+
+class DividendFarmPosition(Base):
+    __tablename__="dividend_farm_positions"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    entry_execution_id:Mapped[int]=mapped_column(ForeignKey("controlled_execution_records.id",ondelete="RESTRICT"),unique=True,index=True)
+    entry_plan_id:Mapped[int|None]=mapped_column(ForeignKey("planned_trades.id",ondelete="RESTRICT"),nullable=True,index=True)
+    strategy_decision_id:Mapped[int]=mapped_column(ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),index=True)
+    symbol:Mapped[str]=mapped_column(String(32),index=True);quantity:Mapped[float]=mapped_column(Float);entry_price:Mapped[float]=mapped_column(Float);entry_filled_at:Mapped[datetime]=mapped_column(DateTime(timezone=True));ex_dividend_date:Mapped[date]=mapped_column(Date,index=True);exit_target_price:Mapped[float]=mapped_column(Float)
+    status:Mapped[str]=mapped_column(String(24),index=True);exit_strategy_decision_id:Mapped[int|None]=mapped_column(ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),nullable=True,index=True);exit_plan_id:Mapped[int|None]=mapped_column(ForeignKey("planned_trades.id",ondelete="RESTRICT"),nullable=True,index=True)
+    last_observed_price:Mapped[float|None]=mapped_column(Float,nullable=True);last_observed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True);created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now());updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
 
 class ControlledExecutionRecord(Base):
     __tablename__="controlled_execution_records"

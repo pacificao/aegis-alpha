@@ -12,10 +12,9 @@ The complete task-level roadmap is canonically defined in `backend/app/roadmap_d
 8. **Aegis Simulator** — live-data simulation, paper execution/fills/portfolio, isolation, and performance.
 9. **Aegis Gateway** — broker abstraction, Robinhood Agentic/MCP, synchronization, orders/fills/reconciliation, failure handling, audit, and safeguards.
 10. **Aegis Controlled Live** — durable planned-trade notifications and internal capital reservations, entry-session revalidation, real capital with per-order human approval and intent/fill/state/risk validation; one explicitly selected Agentic MCP account; parameterized tax-lot and realized-P&L reads; and remediation of the pre-existing port-21 listener before authorization.
-11. **Aegis Autonomy** — strategy, capital, asset, size, loss, portfolio, and granular permission bounds.
-12. **Aegis Evolution** — continuous research/refinement/allocation/regime selection, agent evaluation, new data/brokers/assets, optional local inference, and provider-neutral scheduled/audited operator notifications.
+11. **Aegis Autonomy** — persistent login-independent operation; strategy, capital, asset, size, loss, portfolio, and granular permission bounds; explicit automatic-versus-human approval tiers; missed-approval expiry and immediate reservation release; restart recovery and fail-closed reconciliation.
+12. **Aegis Evolution** — continuous research/refinement/allocation/regime selection, including rolling Dividend Farm recovery metrics and versioned parameter challengers. Changes must pass walk-forward, paper, and shadow validation before bounded promotion, with drift detection and automatic rollback; AI cannot directly rewrite active live parameters.
 
 Post-production backlog: evaluate Alpaca strictly as an optional data-only provider after controlled Robinhood production validation; it is not a launch dependency and may never imply Alpaca order authority.
 
 Task wording in the canonical data file exactly drives the web UI so documentation, persistence, and presentation cannot drift independently.
-

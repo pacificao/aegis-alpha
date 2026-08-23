@@ -75,10 +75,11 @@ def simulate(bars:list[Bar],actions:list[Action],config:dict[str,Any])->dict:
             if symbol not in config["symbols"]: continue
             entry=entries.get((symbol,day))
             if not entry or symbol in positions:continue
+            if entry[1]/bar.close*100<float(config.get("min_dividend_event_pct",0)):continue
             allocated=sum(pos.shares*bar.close for pos in positions.values() if pos.symbol in day_bars)
             budget=min(equity*max_position,max(0,equity*max_allocation-allocated),cash-commission)
-            entry_price=bar.close*(1+(slippage_bps+spread_bps/2)/10000); shares=math.floor(budget/entry_price)
-            if shares<=0:continue
+            entry_price=bar.close*(1+(slippage_bps+spread_bps/2)/10000); shares=round(budget/entry_price,6)
+            if shares<=0 or shares*entry_price<1:continue
             cost=shares*entry_price+commission; cash-=cost; positions[symbol]=Position(symbol,shares,day,entry_price,cost,entry[1],entry[0]); adverse[symbol]=0; turnover+=cost
         marked=sum(pos.shares*day_bars[pos.symbol].close for pos in positions.values() if pos.symbol in day_bars); equity_curve.append({"date":day.isoformat(),"equity":_round(cash+marked),"cash":_round(cash),"exposure_pct":_round(marked/(cash+marked)*100 if cash+marked else 0)})
     if positions:
@@ -122,8 +123,9 @@ def _monte_carlo(trades,initial,iterations,seed):
 
 def sensitivity(bars,actions,config):
     variants=[]
-    for entry in (1,2,3,5):
-        for exit_method in ("PURCHASE_PRICE","PURCHASE_MINUS_DIVIDEND","FIXED_5","FIXED_10","FIXED_15","FIXED_30","HISTORICAL_RECOVERY","VOLATILITY","HYBRID"):
-            candidate={**config,"entry_days_before_ex_date":entry,"exit_method":exit_method,"monte_carlo_iterations":min(50,int(config["monte_carlo_iterations"]))}
-            result=simulate(bars,actions,candidate); variants.append({"entry_days":entry,"exit_method":exit_method,"total_return_pct":result["metrics"]["total_return_pct"],"maximum_drawdown_pct":result["metrics"]["maximum_drawdown_pct"],"trade_count":result["metrics"]["trade_count"]})
+    for event_yield in (0.10,0.15,0.25):
+        for entry in (1,2,3,5):
+            for exit_method in ("PURCHASE_PRICE","PURCHASE_MINUS_DIVIDEND","FIXED_5","FIXED_10","FIXED_15","FIXED_30","HISTORICAL_RECOVERY","VOLATILITY","HYBRID"):
+                candidate={**config,"min_dividend_event_pct":event_yield,"entry_days_before_ex_date":entry,"exit_method":exit_method,"monte_carlo_iterations":min(50,int(config["monte_carlo_iterations"]))}
+                result=simulate(bars,actions,candidate); variants.append({"min_dividend_event_pct":event_yield,"entry_days":entry,"exit_method":exit_method,"total_return_pct":result["metrics"]["total_return_pct"],"maximum_drawdown_pct":result["metrics"]["maximum_drawdown_pct"],"trade_count":result["metrics"]["trade_count"]})
     return variants

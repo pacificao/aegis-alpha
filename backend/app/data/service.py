@@ -128,6 +128,9 @@ def status(db: Session) -> dict:
     for provider in providers:
         run=db.scalar(select(IngestionRun).where(IngestionRun.provider_id==provider.id).order_by(IngestionRun.started_at.desc()).limit(1))
         latest[provider.name]={"enabled":provider.enabled,"credential_status":provider.credential_status,"last_success_at":provider.last_success_at,"last_error":provider.last_error,"latest_run":{"dataset":run.dataset,"status":run.status,"accepted":run.accepted,"rejected":run.rejected,"completed_at":run.completed_at} if run else None}
-    record_count=db.scalar(select(func.count()).select_from(DataRecord)) or 0; issue_count=db.scalar(select(func.count()).select_from(DataQualityIssue)) or 0
+    record_count=db.scalar(select(func.count()).select_from(DataRecord)) or 0
+    # Show actionable findings while preserving resolved findings as immutable audit history.
+    issue_count=db.scalar(select(func.count()).select_from(DataQualityIssue).where(DataQualityIssue.severity!="RESOLVED")) or 0
+    resolved_issue_count=db.scalar(select(func.count()).select_from(DataQualityIssue).where(DataQualityIssue.severity=="RESOLVED")) or 0
     freshest=dict(db.execute(select(DataRecord.data_type,func.max(DataRecord.event_time)).group_by(DataRecord.data_type)).all())
-    return {"providers":latest,"record_count":record_count,"quality_issue_count":issue_count,"freshest":freshest,"trading":"DISABLED"}
+    return {"providers":latest,"record_count":record_count,"quality_issue_count":issue_count,"resolved_quality_issue_count":resolved_issue_count,"freshest":freshest,"trading":"DISABLED"}

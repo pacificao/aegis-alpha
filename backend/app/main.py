@@ -26,15 +26,16 @@ from .gateway import BrokerGatewayClient
 from .config import Settings, get_settings
 from .database import SessionLocal, engine, get_db
 from .logging import configure_logging
-from .models import DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
+from .models import CandidateScanState, DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
 from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, PlannedTradeCancel, PlannedTradeCreate, PlannedTradeRevalidate, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
 from .data.calendar import EASTERN, dividend_entry_plan, market_session, next_sessions, sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .data.queue import queue_status, seed_control_jobs
-from .data.dividends import company_name, recovery_estimate
+from .data.dividends import company_name, dividend_safety_assessment, recovery_estimate
 from .seed import seed_roadmap
+from .dividend_payments import ZERO_PAYMENT_REASON, payable_fractional_dividend
 from .strategy_engine import canonical_checksum, evaluate
 from .lab.service import run_backtest, serialize_run
 from .risk.service import assess as assess_risk, serialize as serialize_risk
@@ -331,7 +332,9 @@ def data_status(_: Principal = Depends(current_principal), db: Session = Depends
 
 @app.get("/api/data/queue")
 def data_queue_status(_: Principal = Depends(current_principal), db: Session = Depends(get_db)):
-    return queue_status(db)
+    value=queue_status(db);outcomes=dict(db.execute(select(CandidateScanState.outcome,func.count()).group_by(CandidateScanState.outcome)).all())
+    value["candidate_scanner"]={"enabled":settings.candidate_scanner_enabled,"interval_seconds":settings.candidate_scanner_interval_seconds,"batch_size":settings.candidate_scanner_batch_size,"tracked":sum(outcomes.values()),"outcomes":outcomes,"last_scan_at":db.scalar(select(func.max(CandidateScanState.last_scanned_at))),"risk_authorized":False,"executable":False,"trading":"DISABLED"}
+    return value
 
 @app.post("/api/data/queue/seed")
 def data_queue_seed(_: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
@@ -383,11 +386,31 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
             elif row.data_type=="OHLCV":
                 try:bars.setdefault(row.event_time.date(),float(payload.get("adjusted_close",payload["close"])))
                 except (KeyError,TypeError,ValueError):pass
-        evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery_estimate(action_dates,bars,datetime.now(EASTERN).date())}
+        recovery=recovery_estimate(action_dates,bars,datetime.now(EASTERN).date())
+        evidence[symbol]={"company_name":company_name(description,instrument.name if instrument else None),**recovery,**dividend_safety_assessment(recovery)}
+    scenario=db.scalar(select(StrategyScenario).where(StrategyScenario.name=="Dividend Farm"));active_version=db.scalar(select(StrategyVersion).where(StrategyVersion.scenario_id==scenario.id).order_by(StrategyVersion.version.desc())) if scenario else None
+    strategy={}
+    if active_version:
+        rows=db.execute(select(CandidateScanState,Instrument.symbol,StrategyDecision).join(Instrument,Instrument.id==CandidateScanState.instrument_id).join(StrategyDecision,StrategyDecision.id==CandidateScanState.last_decision_id).where(CandidateScanState.version_id==active_version.id,Instrument.symbol.in_(symbols))).all()
+        strategy={symbol:{"version":active_version.version,"decision":decision.decision,"reason_codes":decision.reason_codes,"as_of":decision.as_of} for state,symbol,decision in rows}
+    active_plans=db.scalars(select(PlannedTrade).where(PlannedTrade.status.in_({"PLANNED","REVALIDATION_BLOCKED","READY_FOR_FINAL_APPROVAL"})).order_by(PlannedTrade.created_at.desc())).all()
+    plans={(plan.symbol,plan.planned_entry_date.isoformat()):plan for plan in active_plans}
     by_day={day:[] for day in dates}
-    for event in selected.values():event.update(evidence.get(event["symbol"],{}));by_day[event["ex_dividend_date"]].append(event)
+    for event in selected.values():
+        event.update(evidence.get(event["symbol"],{}))
+        event["eligible_entry_date"]=event.pop("planned_entry_date")
+        plan=plans.get((event["symbol"],event["eligible_entry_date"]))
+        event["trade_plan"]={"id":plan.id,"status":plan.status,"quantity":plan.quantity,"reserved_notional":plan.reserved_notional,"planned_entry_date":plan.planned_entry_date} if plan else None
+        event["strategy_decision"]=strategy.get(event["symbol"])
+        if plan:
+            event["recommendation"]="PLANNED_BUY";event["recommendation_reason"]="Capital is reserved; market-day revalidation and deterministic RiskEngine authorization remain required."
+        elif event["strategy_decision"]:
+            decision=event["strategy_decision"];event["recommendation"]="QUALIFIED_AWAITING_PLAN" if decision["decision"]=="ENTRY" else "DO_NOT_PLAN";event["recommendation_reason"]=("All strategy gates passed; unattended planner is awaiting available capital." if decision["decision"]=="ENTRY" else f"Dividend Farm v{decision["version"]} {decision["decision"]}: {', '.join(decision["reason_codes"])}")
+        else:
+            event["recommendation"]="AWAITING_STRATEGY_SCAN";event["recommendation_reason"]="No current immutable-strategy decision is available yet."
+        by_day[event["ex_dividend_date"]].append(event)
     validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0)
-    covered=int(db.scalar(select(func.count(func.distinct(DataRecord.instrument_id))).where(DataRecord.data_type=="BROKER_FUNDAMENTAL")) or 0)
+    covered=int(db.scalar(select(func.count(func.distinct(DataRecord.instrument_id))).join(Instrument,Instrument.id==DataRecord.instrument_id).where(DataRecord.data_type=="BROKER_FUNDAMENTAL",Instrument.active.is_(True))) or 0)
     return {"sessions":[{**row,"events":sorted(by_day[row["session_date"]],key=lambda item:item["symbol"])} for row in calendar],"event_count":len(selected),"primary_provider":"ROBINHOOD","enrichment_providers":["ALPHA_VANTAGE","ALPACA"],"coverage":{"fundamentals_covered":covered,"validated_instruments":validated,"percent":round(covered/validated*100,1) if validated else 0,"status":"COMPLETE" if validated and covered>=validated else "BACKFILLING"},"trading":"DISABLED"}
 
 @app.post("/api/data/robinhood/ingest")
@@ -455,6 +478,21 @@ def lab_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_
     versions=db.scalar(select(func.count()).select_from(StrategyVersion)) or 0;runs=db.scalar(select(func.count()).select_from(LabRun)) or 0
     return {"historical_bars":bars,"corporate_actions":actions,"strategy_versions":versions,"completed_runs":runs,"ready":bars>1 and versions>0,"next_requirement":None if bars>1 and versions>0 else "Ingest normalized OHLCV and create a strategy version","trading":"DISABLED"}
 
+@app.get("/api/performance/readiness")
+def performance_readiness(_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
+    snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()))
+    observed=snapshot.source_observed_at if snapshot else None
+    if observed and observed.tzinfo is None:observed=observed.replace(tzinfo=UTC)
+    return {
+        "strategy_decisions":db.scalar(select(func.count()).select_from(StrategyDecision)) or 0,
+        "backtests":db.scalar(select(func.count()).select_from(LabRun)) or 0,
+        "paper_orders":db.scalar(select(func.count()).select_from(PaperOrder)) or 0,
+        "broker_snapshots":db.scalar(select(func.count()).select_from(BrokerSnapshot)) or 0,
+        "latest_broker_snapshot_at":observed,
+        "broker_snapshot_fresh":bool(observed and (datetime.now(UTC)-observed).total_seconds()<=900),
+        "live_performance_enabled":False,"trading":"DISABLED"
+    }
+
 @app.post("/api/lab/backtests",status_code=201)
 def create_lab_backtest(payload:LabBacktestRequest,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
     try:run=run_backtest(db,payload,principal.username)
@@ -488,6 +526,9 @@ def risk_status(_:Principal=Depends(current_principal),db:Session=Depends(get_db
 @app.post("/api/risk/assessments",status_code=201)
 def create_risk_assessment(payload:RiskAssessmentRequest,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
     if payload.strategy_decision_id is not None and db.get(StrategyDecision,payload.strategy_decision_id) is None:raise HTTPException(status_code=404,detail="Strategy decision not found")
+    instrument=db.scalar(select(Instrument).where(Instrument.symbol==payload.symbol));metadata=(instrument.metadata_json or {}) if instrument else {};now=datetime.now(UTC);session=market_session(now.astimezone(EASTERN).date());opened=datetime.fromisoformat(session["open_at"]) if session["open_at"] else None;closed=datetime.fromisoformat(session["close_at"]) if session["close_at"] else None
+    fractional_eligible=bool(instrument and instrument.active and instrument.asset_type in {"EQUITY","ETF"} and instrument.exchange.upper() not in {"OTC","PINK","GREY"} and metadata.get("robinhood_validation_status")=="VALIDATED")
+    payload=payload.model_copy(update={"fractional_eligible":fractional_eligible,"regular_session":bool(opened and closed and opened<=now<=closed)})
     try:row=assess_risk(db,payload,principal.username)
     except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from None
     return serialize_risk(row)
@@ -617,7 +658,7 @@ def serialize_planned_trade(row:PlannedTrade):
 @app.get("/api/planned-trades")
 def planned_trades(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
     rows=db.scalars(select(PlannedTrade).order_by(PlannedTrade.planned_entry_date,PlannedTrade.created_at.desc()).limit(limit)).all()
-    return {"plans":[serialize_planned_trade(x) for x in rows],"capacity":planned_capacity(db),"trading":"DISABLED"}
+    return {"plans":[serialize_planned_trade(x) for x in rows],"planning_sessions":[x["session_date"] for x in next_sessions(10)],"capacity":planned_capacity(db),"trading":"DISABLED"}
 
 @app.post("/api/planned-trades",status_code=201)
 def create_planned_trade(payload:PlannedTradeCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
@@ -628,6 +669,11 @@ def create_planned_trade(payload:PlannedTradeCreate,principal:Principal=Depends(
     if not market_session(payload.planned_entry_date)["is_open"]:raise HTTPException(status_code=409,detail="Planned entry date is not an exchange session")
     if db.scalar(select(PlannedTrade).where(PlannedTrade.strategy_decision_id==decision.id,PlannedTrade.status.in_(ACTIVE_PLAN_STATUSES))):raise HTTPException(status_code=409,detail="Strategy decision already has an active capital reservation")
     notional=round(payload.quantity*payload.reference_price,2);capacity=planned_capacity(db)
+    if notional<1:raise HTTPException(status_code=409,detail="Planned equity buy must reserve at least $1")
+    version=db.get(StrategyVersion,decision.version_id);scenario=db.get(StrategyScenario,version.scenario_id) if version else None
+    if scenario and scenario.strategy_type=="DIVIDEND_FARM":
+        payable,raw_dividend=payable_fractional_dividend(quantity=payload.quantity,dividend_per_share=decision.inputs.get("dividend_per_share"),notional=notional,event_yield_pct=decision.inputs.get("event_yield_pct"))
+        if not payable:raise HTTPException(status_code=409,detail=f"{ZERO_PAYMENT_REASON}: expected fractional dividend {raw_dividend} is below $0.005")
     if notional>capacity["deployable_cash"]:raise HTTPException(status_code=409,detail="Planned trade exceeds unreserved deployable cash")
     frozen={"strategy_decision_id":decision.id,"symbol":decision.symbol,"side":"BUY","quantity":payload.quantity,"reference_price":payload.reference_price,"reserved_notional":notional,"planned_entry_date":payload.planned_entry_date.isoformat(),"rationale":payload.rationale,"trading":"DISABLED"}
     row=PlannedTrade(strategy_decision_id=decision.id,symbol=decision.symbol,side="BUY",quantity=payload.quantity,reference_price=payload.reference_price,reserved_notional=notional,planned_entry_date=payload.planned_entry_date,status="PLANNED",rationale=payload.rationale,plan_checksum=canonical_checksum(frozen),notification_status="PENDING",notification_event="PLAN_CREATED",created_by=principal.username)
@@ -648,8 +694,9 @@ def revalidate_planned_trade(plan_id:int,payload:PlannedTradeRevalidate,principa
     row=db.get(PlannedTrade,plan_id)
     if row is None:raise HTTPException(status_code=404,detail="Planned trade not found")
     if row.status not in {"PLANNED","REVALIDATION_BLOCKED"}:raise HTTPException(status_code=409,detail="Plan is not awaiting entry-session revalidation")
-    today=datetime.now(EASTERN).date()
-    if today!=row.planned_entry_date or not market_session(today)["is_open"]:
+    now=datetime.now(UTC);today=now.astimezone(EASTERN).date()
+    session=market_session(today);opened=datetime.fromisoformat(session["open_at"]) if session["open_at"] else None;closed=datetime.fromisoformat(session["close_at"]) if session["close_at"] else None
+    if today!=row.planned_entry_date or not opened or not closed or not opened<=now<=closed:
         if today>row.planned_entry_date:row.status="EXPIRED"
         else:row.status="REVALIDATION_BLOCKED"
         row.revalidation_detail="ENTRY_SESSION_NOT_CURRENT";row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED";db.commit()
@@ -669,6 +716,14 @@ def revalidate_planned_trade(plan_id:int,payload:PlannedTradeRevalidate,principa
     capacity=planned_capacity(db,exclude_id=row.id)
     if row.reserved_notional>capacity["deployable_cash"]:
         row.status="REVALIDATION_BLOCKED";row.revalidation_detail="DEPLOYABLE_CASH_CHANGED";row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED";db.commit();raise HTTPException(status_code=409,detail="Deployable cash no longer covers the planned trade")
+    decision=db.get(StrategyDecision,row.strategy_decision_id);version=db.get(StrategyVersion,decision.version_id) if decision else None;scenario=db.get(StrategyScenario,version.scenario_id) if version else None
+    if scenario and scenario.strategy_type=="DIVIDEND_FARM":
+        risk_quantity=float(request.get("quantity",0));risk_notional=risk_quantity*float(request.get("price",0));inputs=decision.inputs or {}
+        payable,raw_dividend=payable_fractional_dividend(quantity=risk_quantity,dividend_per_share=inputs.get("dividend_per_share"),notional=risk_notional,event_yield_pct=inputs.get("event_yield_pct"))
+        if not payable:
+            row.status="REVALIDATION_BLOCKED";row.revalidation_detail=ZERO_PAYMENT_REASON;row.notification_status="PENDING";row.notification_event="REVALIDATION_BLOCKED"
+            db.add(DevelopmentActivity(actor=principal.username,action="planned_trade_revalidation_blocked",entity_type="planned_trade",entity_id=row.id,detail=f"reason={ZERO_PAYMENT_REASON}; expected_dividend={raw_dividend}; broker_called=false; trading=DISABLED"));db.commit()
+            raise HTTPException(status_code=409,detail=f"{ZERO_PAYMENT_REASON}: expected fractional dividend is below $0.005")
     row.final_risk_assessment_id=risk.id;row.status="READY_FOR_FINAL_APPROVAL";row.revalidated_at=datetime.now(UTC);row.revalidation_detail="ENTRY_SESSION_AND_RISK_REVALIDATED";row.notification_status="PENDING";row.notification_event="READY_FOR_FINAL_APPROVAL"
     db.add(DevelopmentActivity(actor=principal.username,action="planned_trade_revalidated",entity_type="planned_trade",entity_id=row.id,detail=f"risk_assessment={risk.id}; human_confirmation_required=true; executable=false; broker_called=false; trading=DISABLED"));db.commit();db.refresh(row)
     return {"plan":serialize_planned_trade(row),"capacity":planned_capacity(db),"order_submitted":False}
@@ -689,7 +744,13 @@ def controlled_live_readiness(_:Principal=Depends(current_principal),db:Session=
     config=db.scalar(select(BrokerConnectionConfig).where(BrokerConnectionConfig.provider=="robinhood"));gateway=BrokerGatewayClient(settings).status();snapshot=db.scalar(select(BrokerSnapshot).order_by(BrokerSnapshot.source_observed_at.desc()));controls=db.get(RiskControlState,1);now=datetime.now(UTC);age=None
     if snapshot:
         observed=snapshot.source_observed_at if snapshot.source_observed_at.tzinfo else snapshot.source_observed_at.replace(tzinfo=UTC);age=max(0,int((now-observed).total_seconds()))
-    phase10=db.scalar(select(Phase).where(Phase.number==10));ftp_task=db.scalar(select(Task).where(Task.phase_id==phase10.id,Task.ordinal==9)) if phase10 else None;gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":bool(gateway.get("execution_adapter_deployed")),"ftp_port_remediated":bool(ftp_task and ftp_task.status==TaskStatus.COMPLETE),"operator_live_authorization":False}
+    phases={number:db.scalar(select(Phase).where(Phase.number==number)) for number in (10,11,12)}
+    tasks={number:{row.ordinal:row.status for row in db.scalars(select(Task).where(Task.phase_id==phase.id)).all()} if phase else {} for number,phase in phases.items()}
+    required_evolution={1,2,3,4,5,13,14,15,16,17}
+    phase10_acceptance=all(tasks[10].get(i)==TaskStatus.COMPLETE for i in range(1,10))
+    autonomy_acceptance=bool(tasks[11]) and all(value==TaskStatus.COMPLETE for value in tasks[11].values())
+    evolution_acceptance=all(tasks[12].get(i)==TaskStatus.COMPLETE for i in required_evolution)
+    gates={"single_account_selected":bool(config and config.selected_account_ref),"broker_snapshot_present":snapshot is not None,"broker_snapshot_fresh":age is not None and age<=900,"risk_controls_clear":bool(controls and not controls.kill_switch_engaged and not controls.circuit_breaker_engaged),"human_approval_ledger":True,"execution_adapter_deployed":bool(gateway.get("execution_adapter_deployed")),"ftp_port_remediated":tasks[10].get(9)==TaskStatus.COMPLETE,"controlled_live_acceptance":phase10_acceptance,"autonomy_acceptance":autonomy_acceptance,"evolution_safety_acceptance":evolution_acceptance,"operator_live_authorization":False}
     return {"paper_trial_ready":all(gates[k] for k in ("single_account_selected","broker_snapshot_present","broker_snapshot_fresh","risk_controls_clear","human_approval_ledger")),"live_ready":all(gates.values()),"gates":gates,"snapshot_age_seconds":age,"mode":"CONTROLLED_TRIAL","order_submission_available":False,"trading":"DISABLED"}
 
 @app.get("/api/controlled-live/intents")

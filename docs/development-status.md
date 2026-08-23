@@ -256,7 +256,7 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Verified the August 31 symbol is capital-letter O (Realty Income Corp.), not zero, against the stored official Robinhood payload. Calendar cards now include company name, annual yield, and a price-recovery estimate only after 12 verified historical events; otherwise they disclose the exact evidence shortfall. Scheduled future corporate actions are now valid data, with the earlier generic future-timestamp rejection remediated by migration 0017.
 - Audited the calendar against Dividend.com and confirmed a material ingestion-coverage gap: 785 Robinhood symbols were validated but only 56 had completed fundamentals. Migration 0018 moves official Robinhood fundamentals ahead of the quote-validation backlog; newly validated symbols now receive dividend schedules before deep history. The UI reports exact fundamentals coverage and BACKFILLING status so a partial calendar cannot appear complete. Dividend.com remains an external comparison source and is not scraped or treated as licensed production data.
 - Replaced strategy-biased universe discovery with a daily strategy-neutral master directory from Nasdaq Trader official `nasdaqlisted.txt` and `otherlisted.txt`. Non-test stocks, ETFs, CEFs, ADRs, preferreds, and warrants are cataloged with provenance and classification, then passed through official Robinhood quote validation before becoming active. Unsupported symbol formats remain visible but fail closed; discovery never grants strategy, risk, or execution authority.
-- Dividend Farm T-1 now means the immediately preceding XNYS trading session, never the previous calendar day. Calendar events expose the planned entry date; Monday ex-dates select Friday, observed holidays roll back further, and exceptional closures can override the schedule. A separate deterministic calendar gate blocks trading-disabled, wrong-session, and unconfirmed-market-open cases and can only advance to RiskEngine review.
+- Dividend Farm T-1 now means the immediately preceding XNYS trading session, never the previous calendar day. Calendar events expose the eligible entry date; Monday ex-dates select Friday, observed holidays roll back further, and exceptional closures can override the schedule. A separate deterministic calendar gate blocks trading-disabled, wrong-session, and unconfirmed-market-open cases and can only advance to RiskEngine review.
 
 ## Planned-trade notification and capital reservation (2026-08-20)
 
@@ -279,3 +279,146 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Restart-safe queue jobs prioritize Alpaca dividend history, followed by daily bars, for every Robinhood-validated instrument. Credentials remain server-side and are never accepted by the browser, logged, persisted in PostgreSQL, or committed.
 - Official free Basic entitlement is IEX real-time, historical equities/options since 2016, 15-minute latest-data restriction, and 200 historical calls/minute. Aegis uses bounded REST backfill well below that rate and retains Robinhood as the operational primary source.
 - Production validation accepted 40 SPY dividend events and 1,526 adjusted daily bars with zero rejects. The first live queue interval completed 46 dividend histories and increased symbols meeting the 12-event threshold from 2 to 20; 1,130 dividend jobs remain queued at a bounded 10 jobs per minute.
+
+
+## Dividend calendar intent and safety scoring (2026-08-20)
+
+- Corrected calendar semantics: the prior trading session is an eligible entry date, not a planned trade. `PLANNED BUY` and its reserved amount appear only when a matching active, durable capital reservation exists; all other events explicitly state `NO BUY PLANNED` with a deterministic research recommendation.
+- Added a conservative 1–100 historical safety score (higher is historically safer) using evidence depth, recovery probability, median and 90th-percentile recovery time, and maximum observed drawdown. LOW/MEDIUM/HIGH confidence exposes data maturity. The score cannot authorize a trade and remains subordinate to strategy evaluation, deterministic RiskEngine authorization, and execution controls. Trading remains DISABLED.
+
+
+## Dashboard guardrail clarity (2026-08-20)
+
+- Added concise explanations for each decision guardrail and linked the Upcoming Candidates evidence tile directly to the Dividend Calendar.
+
+
+## Robinhood coverage denominator correction (2026-08-20)
+
+- Corrected Dividend Calendar coverage to count fundamentals only for the active Robinhood-validated universe. Inactive catalog records can no longer produce percentages above 100% or a false COMPLETE state.
+
+
+## Ticker-completion ingestion cohorts (2026-08-21)
+
+- Changed read-only ingestion scheduling from dataset-wide breadth-first ordering to 25-symbol completion cohorts. Within each cohort, Aegis processes a ticker across its queued datasets before advancing, producing strategy-ready securities sooner without changing providers, stored records, quotas, or trading controls.
+- Each batch reserves bounded capacity for global control work and continued Robinhood symbol validation, preventing cohort processing from starving universe discovery. Queue status now exposes `TICKER_COMPLETION_COHORT` and cohort size 25. Existing queued jobs remain intact and restart-safe; trading remains DISABLED.
+
+
+## Evidence-backed operator briefing (2026-08-21)
+
+- Replaced the static pre-market placeholder with a read-only, redacted investment briefing generated from Aegis records: benchmark tape, planned allocations and non-HOLD decisions, upcoming dividend events, fresh governed intelligence and news, research-readiness counts, and a compact system footer. Missing evidence is disclosed instead of converted into a signal. Email remains notification-only and cannot authorize trading.
+
+
+## Evidence-backed post-market highlights (2026-08-21)
+
+- Replaced the static post-market placeholder with a redacted read-only close report: verified benchmark context, latest broker reconciliation and observed order/fill counts, paper-trial activity, strategy and planned-allocation changes, notable intelligence, next-session dividend watch, research readiness, and daily ingestion outcomes. Unsupported P&L and attribution remain explicitly omitted rather than fabricated; email remains notification-only.
+
+
+## Briefing benchmark freshness gate (2026-08-21)
+
+- Pre-market and post-market delivery now performs a bounded, read-only Alpaca refresh for SPY, QQQ, and IWM immediately before rendering. Comparisons use one deduplicated adjusted close per completed session, so duplicate provider records cannot distort returns. Refresh failure remains fail-closed with an evidence-unavailable message; no signal or order is inferred. Intraday quote ingestion remains separate from official completed-session briefing comparisons.
+
+
+## Dividend recovery evidence clarity (2026-08-21)
+
+- Corrected the Dividend Calendar ambiguous `0/12 events` label. The threshold measures usable recovery observations, which require both a historical dividend event and sufficient surrounding price history; it is not a count of loaded dividends.
+- Calendar events now expose dividend-event and price-day evidence separately. The UI explicitly reports `Price history pending` when dividends are present but prices are not, or shows usable observations, dividends, and price days together when evidence is incomplete.
+- Focused Dividend Farm tests passed 3/3 and the production frontend/backend images built successfully. Trading remains DISABLED.
+
+
+## Dividend-priority ingestion scheduling (2026-08-21)
+
+- Preserved every queued dataset while changing ticker-completion cohort selection to prioritize known upcoming ex-dividend events from nearest to latest, then established historical dividend payers, then securities with no known dividend history. Stocks, ETFs, and other validated security types use the same evidence-based ordering.
+- Control jobs and Robinhood universe validation retain reserved worker capacity, provider quotas remain enforced, and ordering changes neither stored data nor the trading-disabled boundary. Symbols with unknown dividend status naturally move forward if later provider evidence identifies an ex-dividend event.
+- Focused ingestion queue tests passed 8/8, including nearest-ex-date ordering and discovery-starvation protection.
+
+
+## Continuous investment candidate scanner (2026-08-22)
+
+- Added a restart-safe, login-independent deterministic candidate scanner inside the read-only ingestion worker. It evaluates at most 25 due securities every five minutes across the latest immutable version of each active research scenario; paused scenarios are excluded.
+- Durable per-version/per-instrument state rotates coverage, fingerprints normalized evidence, suppresses duplicate decisions, revisits ENTRY candidates every five minutes, backs unchanged non-candidates off to hourly, and retries missing/stale evidence after six hours. Upcoming dividend events retain priority without starving the rest of the validated universe.
+- Scanner facts include fresh price date/close, 20-session average volume, next ex-dividend date and event yield, historical recovery evidence, drawdown, and earnings-window state. Stale or absent price history fails closed. It has no broker call, RiskEngine authority, planning authority, or execution capability.
+- Created immutable Dividend Farm specification v2 to replace the former AAPL/MSFT/SPY seed restriction with the full validated strategy-compatible universe. The original v1 remains immutable and auditable.
+- Migration `0020_candidate_scanner` is deployed. The first full-universe production cycle tracked 25 securities and identified CSX as a research ENTRY candidate from normalized evidence; no RiskEngine authorization, capital reservation, broker call, or order occurred. Worker idle usage measured 0.00% CPU and 69 MiB memory.
+
+## Unattended account evidence and dynamic performance UI (2026-08-22)
+
+- The persistent ingestion worker now refreshes the single selected Robinhood account every five minutes without requiring a logged-in browser. Each run uses the existing official read-only gateway, immutable snapshot normalization, reconciliation and audit ledger; disconnected or unselected states skip safely, and no mutation or order surface was added.
+- Performance no longer displays static phase-completion statements. It reports live database counts for normalized evidence, deterministic decisions, reproducible backtests, paper orders and immutable broker snapshots, plus market/account freshness.
+- Dashboard now separates the actual ten-day capital plan from research opportunities. Only durable capital-reserved plans are labeled as planned buys; the ten-session calendar remains a research outlook and cannot imply a commitment.
+- Production verification recorded consecutive unattended broker synchronizations (`snapshot_id=87` and `88`, one attempt each), a healthy public endpoint, 73/73 backend tests and a successful production frontend build. Trading remained `DISABLED`.
+- Final acceptance exposed that the long-running Nginx container still held the pre-fix bind-mounted configuration inode despite the repository update. Recreating only Nginx activated Docker DNS re-resolution. A subsequent forced frontend recreation changed its container address while the Nginx container ID and start time remained unchanged; `/performance` recovered at HTTP 200 after the resolver TTL. This closes the persistent post-rebuild 502 path.
+
+## Autonomous lifecycle contract before live trading (2026-08-22)
+
+- The login-independent worker now expires every reservation-holding planned-trade state after its eligible NYSE entry session passes, including plans awaiting final human approval. Expiry releases deployable capital automatically, queues an operator notification, and writes a durable system audit event; it never calls the broker.
+- Removed expiry as an unaudited SQL side effect of the email monitor. Email now reports lifecycle events created by the application worker, so capital safety does not depend on SMTP or a logged-in operator.
+- Expanded canonical Phases 11 and 12 with continuous scheduler/restart recovery, automatic-versus-human risk tiers, stale-work cancellation, continuous reconciliation, rolling Dividend Farm recovery monitoring, versioned parameter challengers, walk-forward/paper/shadow promotion gates, drift/overfit detection, bounded rollout and rollback.
+- Active live parameters remain immutable. AI may propose challengers, but cannot directly rewrite live strategy or risk policy; Strategies decide, deterministic RiskEngine authorizes, and Execution executes. Regression suite passed 74/74; trading remained `DISABLED`.
+- Live readiness now derives three additional fail-closed gates from PostgreSQL: all Phase 10 controlled-live acceptance tasks, every Phase 11 autonomy task, and the required Phase 12 research/evolution safety tasks. A future operator authorization cannot override incomplete engineering acceptance.
+- Latest Robinhood synchronization is `VERIFIED/MATCHED` with zero dataset failures, so the parameterized tax-lot/realized-P&L roadmap task is COMPLETE. Existing production evidence also reconciled Phase 11 missed-approval expiry and Phase 12 alternative-data, broker-adapter, notification-channel, scheduled-email and escalation-policy tasks. Unverified tasks remain incomplete.
+- The only Phase 10 tasks requiring a live event remain intended-versus-actual order comparison, fill validation and post-fill portfolio reconciliation. They cannot be truthfully completed until Nathan separately authorizes a bounded real-money acceptance order. Trading remains `DISABLED`.
+- Focused scanner/queue/strategy tests passed 12/12, production frontend/backend/worker builds passed, public health is healthy, and trading remains DISABLED. The full backend run recorded 70 passes plus two unrelated environment-specific failures already described in test output (container source-path fixture and production OpenAI configuration versus an unconfigured test expectation).
+
+
+## Container reaping and dynamic Nginx upstreams (2026-08-22)
+
+- Diagnosed all 23 host zombie processes as exited Python health checks parented to Uvicorn PID 1 in the local broker-gateway container. Enabled Docker init in both the main Compose service and dedicated-broker bootstrap template, recreated only the local gateway, and verified `docker-init` is PID 1 with Uvicorn as its child. Host zombie count fell from 23 to 0.
+- Replaced startup-only Nginx upstream DNS resolution with Docker embedded DNS, shared upstream zones, ten-second validity, and runtime `resolve` for frontend, backend, and the local gateway. Nginx configuration validation passed.
+- Deliberately recreated backend and frontend without restarting Nginx. The Nginx container ID and start timestamp remained unchanged; public `/health` returned healthy with trading disabled and `/login` returned HTTP 200. This removes the persistent stale-container-IP 502 failure mode. A single replica may still have a brief unavailable window during replacement, but Nginx now recovers automatically when the healthy replacement registers.
+
+## Fractional-share safety contract (2026-08-22)
+
+- Confirmed that strategy plans, controlled intents, paper orders, execution requests and reconciled fills use fractional quantities; whole-share ownership is not required.
+- Added a deterministic $1 minimum order-notional check at planning, RiskEngine authorization and broker-gateway execution boundaries. Sub-dollar orders fail closed even if an upstream caller is defective.
+- Fractional orders now require an active Robinhood-validated, exchange-listed equity or ETF candidate and the actual regular NYSE session. The backend derives these facts from trusted instrument metadata and the exchange calendar rather than accepting caller claims; the official broker pre-trade review remains the final eligibility authority.
+- Dividend Farm laboratory sizing now preserves fractional shares instead of rounding down to whole shares, including micro-account research, while discarding simulated orders below $1.
+- Backend regression tests passed 76/76 and broker-gateway tests passed 37/37. Trading remains `DISABLED`.
+
+
+## Dividend Farm liquidity and yield calibration (2026-08-22)
+
+- Replaced the blunt 500,000-share average-volume gate with a 20-session average daily dollar-volume gate of $5 million. This prevents high-priced, actively traded securities from being excluded solely because their share count is low.
+- Added annual yield (minimum 1.0%) to the immutable deterministic entry rules while retaining the 0.15% per-event yield floor and 80% recovery-probability requirement. Research candidates must pass all independent gates; recovery speed alone cannot create an entry.
+- Added 0.10%, 0.15% and 0.25% event-yield variants to Aegis Lab sensitivity analysis. Backtests now suppress events below the selected floor and report 108 entry/exit/yield combinations.
+- Migration `0021_dividend_liquidity_yield` preserves prior versions and creates a new immutable Dividend Farm version with the calibrated rules. Scanner evidence now records both average share volume and average dollar volume.
+- Strategy UI exposes annual yield and average daily dollar volume in decision previews; Aegis Lab displays the event-yield threshold for every sensitivity result. Backend regression tests passed 78/78 and the production frontend build passed. Trading remains `DISABLED`.
+
+
+## Fully qualified Dividend Farm planning boundary (2026-08-22)
+
+- Closed the gap between saved Dividend Farm parameters and deterministic decisions with immutable version 4. Qualification now fails closed on event and annual yield bounds, recovery probability, observation count, median and p90 recovery, historical drawdown, dividend-history length, payment frequency, special-dividend policy, market capitalization, earnings window, dollar liquidity and permitted asset type.
+- Added normalized scanner evidence for Robinhood market capitalization, payment frequency, special-dividend status, history length and complete recovery-tail metrics. Missing required evidence produces no ENTRY rather than an optimistic candidate. Portfolio/sector/correlation limits remain independently enforced by RiskEngine.
+- Added an unattended qualified-entry planner. It converts only current v4 ENTRY decisions within the next ten exchange sessions into auditable capital reservations, sizes the $5 micro account at no more than $1 per plan under the existing exception, deduplicates plans, emits notifications and releases missed reservations through the existing lifecycle worker. It cannot assess risk, create an execution intent, call the broker or place an order.
+- Dividend Calendar now reports the active immutable strategy decision and exact reason codes instead of presenting recovery-only research scoring as plan eligibility.
+- Scanner capacity accounting no longer lets versions with no due instruments consume the bounded scan allowance, and incomplete specifications are skipped safely.
+- Regression suite passed 79/79 and the production frontend build passed. Trading remains `DISABLED`; controlled-live acceptance and explicit authorization remain separate prerequisites.
+
+
+## Scheduled corporate-action quality correction (2026-08-22)
+
+- Future-dated corporate actions such as announced ex-dividend and payable dates are valid scheduled evidence and no longer produce FUTURE_TIMESTAMP findings.
+- Migration 0023 preserves the 98 historical findings as RESOLVED, restores affected corporate-action records to VALID, and the operator-facing quality count now reports only actionable unresolved findings.
+- Verified migration head 0023_scheduled_quality, 18,920 valid corporate-action records, zero actionable issues, healthy public backend, and trading remains DISABLED.
+
+
+## Dividend Farm automatic recovery-exit lifecycle (2026-08-22)
+
+- Added a persistent Aegis-managed position ledger populated only from reconciled controlled BUY fills, preserving actual quantity, fill price, fill time and ex-dividend date.
+- The login-independent worker now verifies fresh broker holdings and fresh quote evidence continuously. On or after ex-date, a price at or above the actual entry fill creates one immutable EXIT decision and SELL plan.
+- Recovery exits are automatically evaluated by deterministic RiskEngine; exposure-reducing SELL orders bypass position-growth limits while kill switch, circuit breaker, holdings, fractional eligibility, regular-session, minimum-notional, open-order and freshness controls remain enforced.
+- Dashboard decision queue distinguishes recovery exits from planned buys. Broker submission remains disabled until the isolated execution domain and explicit live authorization gates are active.
+- Suppressed HTTP client request-URL logging in the worker after verification found an Alpha Vantage key in query-string logs; the worker container was replaced to remove that log copy. The provider key must be rotated by the operator.
+
+
+## Dividend Farm full-capital allocation (2026-08-22)
+
+- Raised the Dividend Farm total strategy allocation ceiling from 25% to 100% through immutable strategy version 5 and removed its strategy cash buffer.
+- Added a versioned deterministic risk policy permitting up to 100% portfolio exposure and 100% of currently verified buying power, while retaining per-position sizing, sector/correlation concentration, loss, drawdown, volatility, freshness, holdings, session, kill-switch and circuit-breaker controls.
+- The change permits all capital to be invested across independently qualified positions; it does not require full investment and cannot create or execute an unqualified trade. Trading remains DISABLED.
+
+## Fractional-dividend zero-payment gate (2026-08-22)
+
+- Added a deterministic Dividend Farm gate using Robinhood's nearest-cent fractional-dividend settlement rule. Expected payments below $0.005 fail closed with `FILTER_EXPECTED_DIVIDEND_ROUNDS_TO_ZERO`.
+- Enforced the rule during automatic planning, operator-created planning, and final entry-session revalidation. Candidate evidence now preserves declared dividend per share for quantity-level calculation, with event yield as a deterministic fallback.
+- The login-independent lifecycle worker cancels previously active Dividend Farm plans that fail the gate, releases their reserved capital, emits an operator notification, and records an auditable development activity. No broker call is made.
+- Boundary and lifecycle regression tests cover just below $0.005, exactly $0.005, accepted plans, and automatic cancellation. Trading remains `DISABLED`.

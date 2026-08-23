@@ -14,7 +14,7 @@ def fixtures():
   if i==20:price=99
   bars.append(Bar(day,"AAPL",price,price+1,price-1,price,1_000_000));bars.append(Bar(day,"SPY",500+i*.2,501+i*.2,499+i*.2,500+i*.2,2_000_000))
  return bars,[Action(start+timedelta(days=20),"AAPL","DIVIDEND",1.0),Action(start+timedelta(days=25),"SPY","DIVIDEND",2.0),Action(start+timedelta(days=45),"AAPL","SPLIT",2.0)]
-def config():return {"initial_capital":100000.0,"commission_per_trade":1.0,"slippage_bps":5.0,"spread_bps":4.0,"max_position_pct":1.0,"max_allocation_pct":25.0,"entry_days_before_ex_date":1,"exit_method":"PURCHASE_PRICE","profit_target_pct":0.0,"historical_recovery_days":30,"volatility_multiplier":1.0,"hybrid_time_stop_days":30,"max_holding_days":30,"benchmark_symbol":"SPY","monte_carlo_iterations":100,"random_seed":42,"run_sensitivity":True,"start_date":"2026-01-01","end_date":"2026-03-21","strategy_version_id":1,"symbols":["AAPL"]}
+def config():return {"initial_capital":100000.0,"commission_per_trade":1.0,"slippage_bps":5.0,"spread_bps":4.0,"max_position_pct":1.0,"max_allocation_pct":25.0,"min_dividend_event_pct":0.15,"entry_days_before_ex_date":1,"exit_method":"PURCHASE_PRICE","profit_target_pct":0.0,"historical_recovery_days":30,"volatility_multiplier":1.0,"hybrid_time_stop_days":30,"max_holding_days":30,"benchmark_symbol":"SPY","monte_carlo_iterations":100,"random_seed":42,"run_sensitivity":True,"start_date":"2026-01-01","end_date":"2026-03-21","strategy_version_id":1,"symbols":["AAPL"]}
 
 def test_reproducible_portfolio_backtest_covers_phase5_analytics():
  bars,actions=fixtures();first=simulate(bars,actions,config());second=simulate(bars,actions,config())
@@ -23,7 +23,7 @@ def test_reproducible_portfolio_backtest_covers_phase5_analytics():
  for key in ("cagr_pct","maximum_drawdown_pct","sharpe_ratio","sortino_ratio","average_exposure_pct","turnover_pct","return_per_capital_day_pct"):assert key in metrics
  assert first["walk_forward"]["split_date"] and first["monte_carlo"]["iterations"]==100
  assert first["trades"][0]["costs"]>0 and first["trades"][0]["holding_days"]>=1
- assert len(sensitivity(bars,actions,config()))==36
+ assert len(sensitivity(bars,actions,config()))==108
  assert checksum(first)==checksum(second)
 
 def test_friction_and_corporate_action_behavior():
@@ -48,8 +48,12 @@ def test_split_adjusts_open_position_without_creating_capital():
  actions=[Action(start+timedelta(days=2),"XYZ","DIVIDEND",1),Action(start+timedelta(days=4),"XYZ","SPLIT",2)]
  result=simulate(bars,actions,{**config(),"symbols":["XYZ"],"benchmark_symbol":"XYZ","exit_method":"FIXED_5"})
  assert result["metrics"]["trade_count"]==1
- assert result["trades"][0]["shares"]==18
+ assert abs(result["trades"][0]["shares"]-19.98)<.01
  assert result["trades"][0]["exit_reason"]=="FIXED_EXIT"
+
+def test_small_account_backtest_uses_fractional_shares_above_one_dollar():
+ bars,actions=fixtures();result=simulate(bars,actions,{**config(),"initial_capital":5,"commission_per_trade":0,"max_position_pct":25,"max_allocation_pct":25})
+ assert result["trades"] and 0<result["trades"][0]["shares"]<1
 
 def test_lab_api_persists_reproducible_artifact():
  from sqlalchemy import select
@@ -78,3 +82,10 @@ def test_lab_api_persists_reproducible_artifact():
    duplicate=client.post("/api/lab/backtests",json=payload,headers={"X-CSRF-Token":"csrf"});assert duplicate.status_code==201 and duplicate.json()["id"]==result["id"]
    trades=client.get(f"/api/lab/backtests/{result['id']}/trades");assert trades.status_code==200 and trades.json()[0]["symbol"]==labx
  finally:app.dependency_overrides.clear()
+
+
+def test_event_yield_floor_excludes_low_value_capture():
+ bars,actions=fixtures();weak=[Action(action.day,action.symbol,action.kind,0.05) if action.symbol=="AAPL" and action.kind=="DIVIDEND" else action for action in actions]
+ result=simulate(bars,weak,{**config(),"min_dividend_event_pct":0.10})
+ assert result["metrics"]["trade_count"]==0
+ assert {row["min_dividend_event_pct"] for row in sensitivity(bars,actions,config())}=={0.10,0.15,0.25}

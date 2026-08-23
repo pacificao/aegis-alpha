@@ -10,13 +10,8 @@ def config():
         cfg.update(load('/home/nathan/.config/aegis/mail.env'))
     return cfg
 def planned_notifications(cfg):
-    from zoneinfo import ZoneInfo
-    today=__import__("datetime").datetime.now(ZoneInfo("America/New_York")).date().isoformat()
-    expire=f"UPDATE planned_trades SET status='EXPIRED', notification_status='PENDING', notification_event='PLAN_EXPIRED', revalidation_detail='ENTRY_SESSION_PASSED' WHERE status IN ('PLANNED','REVALIDATION_BLOCKED') AND planned_entry_date < '{today}'"
     query="SELECT json_build_object('id',id,'event',notification_event,'symbol',symbol,'side',side,'quantity',quantity,'reserved_notional',reserved_notional,'planned_entry_date',planned_entry_date,'status',status,'rationale',rationale)::text FROM planned_trades WHERE notification_status='PENDING' ORDER BY created_at LIMIT 25"
     command=["docker","compose","exec","-T","postgres","psql","-U",cfg["POSTGRES_USER"],"-d",cfg["POSTGRES_DB"],"-At","-c",query]
-    try: subprocess.run(command[:-1]+[expire],cwd="/home/nathan/aegis-alpha",capture_output=True,text=True,timeout=20,check=True)
-    except (subprocess.SubprocessError,KeyError): return
     try: result=subprocess.run(command,cwd="/home/nathan/aegis-alpha",capture_output=True,text=True,timeout=20,check=True)
     except (subprocess.SubprocessError,KeyError): return
     rows=[json.loads(line) for line in result.stdout.splitlines() if line.strip()]

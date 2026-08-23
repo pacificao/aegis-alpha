@@ -16,17 +16,17 @@ def proposal(**changes):
 def test_all_controls_authorize_but_never_execute():
     result=evaluate(DEFAULT_POLICY,proposal(),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert result["outcome"]=="AUTHORIZED" and result["risk_authorized"] is True
-    assert result["executable"] is False and result["trading"]=="DISABLED" and len(result["checks"])==17
+    assert result["executable"] is False and result["trading"]=="DISABLED" and len(result["checks"])==20
 
 def test_every_phase6_control_fails_closed():
     cases=[
       ({}, {"kill_switch_engaged":True,"circuit_breaker_engaged":False},"KILL_SWITCH_CLEAR"),
       ({}, {"kill_switch_engaged":False,"circuit_breaker_engaged":True},"CIRCUIT_BREAKER_CLEAR"),
       ({"quantity":20000},None,"ORDER_QUANTITY"),({"quantity":30},None,"ORDER_NOTIONAL"),({"price":510},None,"PRICE_SANITY"),
-      ({"current_position_value":900,"quantity":1},None,"POSITION_LIMIT"),({"total_exposure_value":24900},None,"PORTFOLIO_EXPOSURE"),
+      ({"current_position_value":900,"quantity":1},None,"POSITION_LIMIT"),({"total_exposure_value":99900},None,"PORTFOLIO_EXPOSURE"),
       ({"sector_exposure_value":19900},None,"SECTOR_EXPOSURE"),({"correlated_exposure_value":29900},None,"CORRELATION_EXPOSURE"),
       ({"daily_pnl_pct":-3},None,"DAILY_LOSS"),({"drawdown_pct":11},None,"DRAWDOWN"),({"annualized_volatility_pct":41},None,"VOLATILITY"),
-      ({"buying_power":1000,"quantity":1},None,"BUYING_POWER"),({"side":"SELL","current_position_value":0},None,"SELL_POSITION_AVAILABLE"),({"open_order_count":20},None,"OPEN_ORDERS"),
+      ({"buying_power":499,"quantity":1},None,"BUYING_POWER"),({"side":"SELL","current_position_value":0},None,"SELL_POSITION_AVAILABLE"),({"open_order_count":20},None,"OPEN_ORDERS"),
       ({"market_data_as_of":NOW-timedelta(seconds=301)},None,"MARKET_DATA_FRESH"),({"proposal_created_at":NOW-timedelta(seconds=301)},None,"PROPOSAL_FRESH")]
     for changes,controls,code in cases:
         result=evaluate(DEFAULT_POLICY,proposal(**changes),controls or {"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
@@ -35,18 +35,25 @@ def test_every_phase6_control_fails_closed():
 def test_micro_account_exception_is_bounded_and_explicit():
     policy={**DEFAULT_POLICY,"micro_account_trial_eligible":True}
     base={"price":500,"reference_price":500,"portfolio_value":5,"buying_power":5,"total_exposure_value":0,"sector_exposure_value":0,"correlated_exposure_value":0}
-    allowed=evaluate(policy,proposal(quantity=0.002,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    allowed=evaluate(policy,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     position=next(check for check in allowed["checks"] if check["code"]=="POSITION_LIMIT")
     assert allowed["outcome"]=="AUTHORIZED" and allowed["notional"]==1.0
     assert position["limit"]==1.0 and "micro-account" in position["detail"]
-    too_large=evaluate(policy,proposal(quantity=0.0022,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    too_large=evaluate(policy,proposal(quantity=0.0022,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert too_large["outcome"]=="REJECTED" and "POSITION_LIMIT" in too_large["reason_codes"]
-    ordinary=evaluate(DEFAULT_POLICY,proposal(quantity=0.002,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    ordinary=evaluate(DEFAULT_POLICY,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert ordinary["outcome"]=="REJECTED" and "POSITION_LIMIT" in ordinary["reason_codes"]
-    threshold=evaluate(policy,proposal(quantity=0.002,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    threshold=evaluate(policy,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert threshold["outcome"]=="AUTHORIZED"
-    above_pct=evaluate(policy,proposal(quantity=0.0022,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    above_pct=evaluate(policy,proposal(quantity=0.0022,fractional_eligible=True,regular_session=True,**{**base,"portfolio_value":100,"buying_power":100}),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert above_pct["outcome"]=="REJECTED" and "POSITION_LIMIT" in above_pct["reason_codes"]
+
+def test_fractional_orders_require_one_dollar_eligibility_and_regular_session():
+    controls={"kill_switch_engaged":False,"circuit_breaker_engaged":False};base={"quantity":0.002,"price":500,"reference_price":500}
+    assert "FRACTIONAL_ELIGIBILITY" in evaluate(DEFAULT_POLICY,proposal(**base),controls,NOW)["reason_codes"]
+    assert "FRACTIONAL_SESSION" in evaluate(DEFAULT_POLICY,proposal(**base,fractional_eligible=True),controls,NOW)["reason_codes"]
+    under={**base,"quantity":0.001}
+    assert "MINIMUM_NOTIONAL" in evaluate(DEFAULT_POLICY,proposal(**under,fractional_eligible=True,regular_session=True),controls,NOW)["reason_codes"]
 
 def test_risk_api_auth_persistence_deduplication_and_controls():
     principal=Principal(username="test-operator",session_id="risk",csrf_token="csrf")
@@ -80,3 +87,20 @@ def test_strategy_limits_can_only_tighten_global_policy():
         dividend_version=StrategyVersion(scenario_id=dividend.id,version=1,specification={"position_sizing":{"max_position_pct":1.0}},checksum=("d"+marker).ljust(64,"0")[:64],created_by="test");db.add(dividend_version);db.flush()
         dividend_decision=StrategyDecision(version_id=dividend_version.id,symbol="SPY",as_of=NOW,decision="ENTRY",reason_codes=[],proposed_weight_pct=1.0,inputs={});db.add(dividend_decision);db.flush()
         assert effective_policy(db,DEFAULT_POLICY,dividend_decision.id)["micro_account_trial_eligible"] is True
+
+def test_risk_reducing_sell_bypasses_growth_limits_but_not_global_stop_or_holdings():
+    controls={"kill_switch_engaged":False,"circuit_breaker_engaged":False}
+    reducing=proposal(side="SELL",quantity=1,price=500,reference_price=500,current_position_value=500,total_exposure_value=100000,sector_exposure_value=100000,correlated_exposure_value=100000,daily_pnl_pct=-50,drawdown_pct=50,annualized_volatility_pct=500,buying_power=0)
+    allowed=evaluate(DEFAULT_POLICY,reducing,controls,NOW)
+    assert allowed["outcome"]=="AUTHORIZED"
+    stopped=evaluate(DEFAULT_POLICY,reducing,{"kill_switch_engaged":True,"circuit_breaker_engaged":False},NOW)
+    assert stopped["outcome"]=="REJECTED" and "KILL_SWITCH_CLEAR" in stopped["reason_codes"]
+    missing=evaluate(DEFAULT_POLICY,{**reducing,"current_position_value":0},controls,NOW)
+    assert missing["outcome"]=="REJECTED" and "SELL_POSITION_AVAILABLE" in missing["reason_codes"]
+
+def test_full_capital_policy_keeps_independent_concentration_controls():
+    assert DEFAULT_POLICY["max_portfolio_exposure_pct"]==100.0
+    assert DEFAULT_POLICY["max_buying_power_use_pct"]==100.0
+    assert DEFAULT_POLICY["max_position_pct"]==1.0
+    assert DEFAULT_POLICY["max_sector_exposure_pct"]==20.0
+    assert DEFAULT_POLICY["max_correlated_exposure_pct"]==30.0
