@@ -5,6 +5,7 @@ import logging
 import time
 from datetime import datetime
 from ..candidate_scanner import scan_batch
+from ..dividend_exit_monitor import authorize_recovery_exits, capture_filled_entries, monitor_recovery_exits
 from ..broker_sync.service import synchronize
 from ..config import get_settings
 from ..database import SessionLocal
@@ -15,6 +16,7 @@ from sqlalchemy import select
 from .calendar import EASTERN
 from .queue import run_batch
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s ingestion-worker %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 def _run_ingestion(settings)->None:
     db=SessionLocal()
@@ -45,6 +47,14 @@ def _run_broker_sync(settings)->None:
     except Exception:logging.exception("broker_sync_failed")
     finally:db.close()
 
+def _run_exit_monitor()->None:
+    db=SessionLocal()
+    try:
+        opened=capture_filled_entries(db);exits=monitor_recovery_exits(db);authorized=authorize_recovery_exits(db)
+        if opened or exits:logging.info("dividend_exit_lifecycle opened=%s exit_plans=%s authorized_exits=%s broker_called=false trading=DISABLED",opened,exits,authorized)
+    except Exception:logging.exception("dividend_exit_monitor_failed")
+    finally:db.close()
+
 def _expire_plans()->None:
     db=SessionLocal()
     try:
@@ -62,6 +72,7 @@ def main()->None:
     while True:
         _expire_plans()
         _run_ingestion(settings)
+        _run_exit_monitor()
         if settings.broker_sync_enabled and time.monotonic()>=next_broker_sync:
             _run_broker_sync(settings);next_broker_sync=time.monotonic()+settings.broker_sync_interval_seconds
         if settings.candidate_scanner_enabled and time.monotonic()>=next_candidate_scan:
