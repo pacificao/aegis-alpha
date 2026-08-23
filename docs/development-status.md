@@ -408,3 +408,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Recovery exits are automatically evaluated by deterministic RiskEngine; exposure-reducing SELL orders bypass position-growth limits while kill switch, circuit breaker, holdings, fractional eligibility, regular-session, minimum-notional, open-order and freshness controls remain enforced.
 - Dashboard decision queue distinguishes recovery exits from planned buys. Broker submission remains disabled until the isolated execution domain and explicit live authorization gates are active.
 - Suppressed HTTP client request-URL logging in the worker after verification found an Alpha Vantage key in query-string logs; the worker container was replaced to remove that log copy. The provider key must be rotated by the operator.
+
+
+## Dividend Farm full-capital allocation (2026-08-22)
+
+- Raised the Dividend Farm total strategy allocation ceiling from 25% to 100% through immutable strategy version 5 and removed its strategy cash buffer.
+- Added a versioned deterministic risk policy permitting up to 100% portfolio exposure and 100% of currently verified buying power, while retaining per-position sizing, sector/correlation concentration, loss, drawdown, volatility, freshness, holdings, session, kill-switch and circuit-breaker controls.
+- The change permits all capital to be invested across independently qualified positions; it does not require full investment and cannot create or execute an unqualified trade. Trading remains DISABLED.

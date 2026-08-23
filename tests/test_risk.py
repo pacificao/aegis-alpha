@@ -23,10 +23,10 @@ def test_every_phase6_control_fails_closed():
       ({}, {"kill_switch_engaged":True,"circuit_breaker_engaged":False},"KILL_SWITCH_CLEAR"),
       ({}, {"kill_switch_engaged":False,"circuit_breaker_engaged":True},"CIRCUIT_BREAKER_CLEAR"),
       ({"quantity":20000},None,"ORDER_QUANTITY"),({"quantity":30},None,"ORDER_NOTIONAL"),({"price":510},None,"PRICE_SANITY"),
-      ({"current_position_value":900,"quantity":1},None,"POSITION_LIMIT"),({"total_exposure_value":24900},None,"PORTFOLIO_EXPOSURE"),
+      ({"current_position_value":900,"quantity":1},None,"POSITION_LIMIT"),({"total_exposure_value":99900},None,"PORTFOLIO_EXPOSURE"),
       ({"sector_exposure_value":19900},None,"SECTOR_EXPOSURE"),({"correlated_exposure_value":29900},None,"CORRELATION_EXPOSURE"),
       ({"daily_pnl_pct":-3},None,"DAILY_LOSS"),({"drawdown_pct":11},None,"DRAWDOWN"),({"annualized_volatility_pct":41},None,"VOLATILITY"),
-      ({"buying_power":1000,"quantity":1},None,"BUYING_POWER"),({"side":"SELL","current_position_value":0},None,"SELL_POSITION_AVAILABLE"),({"open_order_count":20},None,"OPEN_ORDERS"),
+      ({"buying_power":499,"quantity":1},None,"BUYING_POWER"),({"side":"SELL","current_position_value":0},None,"SELL_POSITION_AVAILABLE"),({"open_order_count":20},None,"OPEN_ORDERS"),
       ({"market_data_as_of":NOW-timedelta(seconds=301)},None,"MARKET_DATA_FRESH"),({"proposal_created_at":NOW-timedelta(seconds=301)},None,"PROPOSAL_FRESH")]
     for changes,controls,code in cases:
         result=evaluate(DEFAULT_POLICY,proposal(**changes),controls or {"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
@@ -97,3 +97,10 @@ def test_risk_reducing_sell_bypasses_growth_limits_but_not_global_stop_or_holdin
     assert stopped["outcome"]=="REJECTED" and "KILL_SWITCH_CLEAR" in stopped["reason_codes"]
     missing=evaluate(DEFAULT_POLICY,{**reducing,"current_position_value":0},controls,NOW)
     assert missing["outcome"]=="REJECTED" and "SELL_POSITION_AVAILABLE" in missing["reason_codes"]
+
+def test_full_capital_policy_keeps_independent_concentration_controls():
+    assert DEFAULT_POLICY["max_portfolio_exposure_pct"]==100.0
+    assert DEFAULT_POLICY["max_buying_power_use_pct"]==100.0
+    assert DEFAULT_POLICY["max_position_pct"]==1.0
+    assert DEFAULT_POLICY["max_sector_exposure_pct"]==20.0
+    assert DEFAULT_POLICY["max_correlated_exposure_pct"]==30.0
