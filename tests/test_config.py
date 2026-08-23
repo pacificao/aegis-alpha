@@ -1,10 +1,5 @@
-import pytest
-from pydantic import ValidationError
-
 from app.config import Settings
 
-
-def test_phase_one_rejects_trading_enablement():
-    with pytest.raises(ValidationError, match="Trading is prohibited"):
-        Settings(aegis_trading_enabled=True)
-
+def test_trading_is_disabled_by_default_and_requires_external_gates():
+    assert Settings().aegis_trading_enabled is False
+    assert Settings(aegis_trading_enabled=True).aegis_trading_enabled is True

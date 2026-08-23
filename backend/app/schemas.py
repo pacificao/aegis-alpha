@@ -376,3 +376,21 @@ class PlannedTradeCancel(BaseModel):
 class PlannedTradeRevalidate(BaseModel):
     model_config=ConfigDict(extra="forbid")
     risk_assessment_id:int=Field(gt=0)
+
+class LiveTradingAuthorizationUpdate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    enabled:bool
+    max_order_notional:float=Field(ge=1,le=5)
+    duration_minutes:int=Field(ge=5,le=60)
+    confirmation:Literal["AUTHORIZE CONTROLLED LIVE TRADING","DISABLE LIVE TRADING"]
+    reason:str=Field(min_length=10,max_length=500)
+
+class ControlledExecutionRecovery(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    order_ref:str=Field(min_length=3,max_length=120,pattern=r"^[A-Za-z0-9_-]+$")
+    confirmation:Literal["RECOVER UNKNOWN BROKER ORDER"]
+
+class ControlledExecutionCancel(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    confirmation:Literal["CANCEL LIVE ORDER"]
+    reason:str=Field(min_length=10,max_length=500)

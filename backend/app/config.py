@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,12 +48,6 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     codex_verifier_enabled: bool = False
     codex_verifier_model: str = "gpt-5-mini"
-    @field_validator("aegis_trading_enabled")
-    @classmethod
-    def trading_must_remain_disabled(cls, value: bool) -> bool:
-        if value:
-            raise ValueError("Trading is prohibited in Phase 1")
-        return value
 
     @property
     def is_secure_cookie(self) -> bool:
