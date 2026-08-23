@@ -399,3 +399,12 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Future-dated corporate actions such as announced ex-dividend and payable dates are valid scheduled evidence and no longer produce FUTURE_TIMESTAMP findings.
 - Migration 0023 preserves the 98 historical findings as RESOLVED, restores affected corporate-action records to VALID, and the operator-facing quality count now reports only actionable unresolved findings.
 - Verified migration head 0023_scheduled_quality, 18,920 valid corporate-action records, zero actionable issues, healthy public backend, and trading remains DISABLED.
+
+
+## Dividend Farm automatic recovery-exit lifecycle (2026-08-22)
+
+- Added a persistent Aegis-managed position ledger populated only from reconciled controlled BUY fills, preserving actual quantity, fill price, fill time and ex-dividend date.
+- The login-independent worker now verifies fresh broker holdings and fresh quote evidence continuously. On or after ex-date, a price at or above the actual entry fill creates one immutable EXIT decision and SELL plan.
+- Recovery exits are automatically evaluated by deterministic RiskEngine; exposure-reducing SELL orders bypass position-growth limits while kill switch, circuit breaker, holdings, fractional eligibility, regular-session, minimum-notional, open-order and freshness controls remain enforced.
+- Dashboard decision queue distinguishes recovery exits from planned buys. Broker submission remains disabled until the isolated execution domain and explicit live authorization gates are active.
+- Suppressed HTTP client request-URL logging in the worker after verification found an Alpha Vantage key in query-string logs; the worker container was replaced to remove that log copy. The provider key must be rotated by the operator.

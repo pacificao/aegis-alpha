@@ -87,3 +87,13 @@ def test_strategy_limits_can_only_tighten_global_policy():
         dividend_version=StrategyVersion(scenario_id=dividend.id,version=1,specification={"position_sizing":{"max_position_pct":1.0}},checksum=("d"+marker).ljust(64,"0")[:64],created_by="test");db.add(dividend_version);db.flush()
         dividend_decision=StrategyDecision(version_id=dividend_version.id,symbol="SPY",as_of=NOW,decision="ENTRY",reason_codes=[],proposed_weight_pct=1.0,inputs={});db.add(dividend_decision);db.flush()
         assert effective_policy(db,DEFAULT_POLICY,dividend_decision.id)["micro_account_trial_eligible"] is True
+
+def test_risk_reducing_sell_bypasses_growth_limits_but_not_global_stop_or_holdings():
+    controls={"kill_switch_engaged":False,"circuit_breaker_engaged":False}
+    reducing=proposal(side="SELL",quantity=1,price=500,reference_price=500,current_position_value=500,total_exposure_value=100000,sector_exposure_value=100000,correlated_exposure_value=100000,daily_pnl_pct=-50,drawdown_pct=50,annualized_volatility_pct=500,buying_power=0)
+    allowed=evaluate(DEFAULT_POLICY,reducing,controls,NOW)
+    assert allowed["outcome"]=="AUTHORIZED"
+    stopped=evaluate(DEFAULT_POLICY,reducing,{"kill_switch_engaged":True,"circuit_breaker_engaged":False},NOW)
+    assert stopped["outcome"]=="REJECTED" and "KILL_SWITCH_CLEAR" in stopped["reason_codes"]
+    missing=evaluate(DEFAULT_POLICY,{**reducing,"current_position_value":0},controls,NOW)
+    assert missing["outcome"]=="REJECTED" and "SELL_POSITION_AVAILABLE" in missing["reason_codes"]

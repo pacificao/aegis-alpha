@@ -330,6 +330,16 @@ class PlannedTrade(Base):
     cancellation_reason:Mapped[str]=mapped_column(Text,default="");created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),index=True);updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
 
 
+class DividendFarmPosition(Base):
+    __tablename__="dividend_farm_positions"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    entry_execution_id:Mapped[int]=mapped_column(ForeignKey("controlled_execution_records.id",ondelete="RESTRICT"),unique=True,index=True)
+    entry_plan_id:Mapped[int|None]=mapped_column(ForeignKey("planned_trades.id",ondelete="RESTRICT"),nullable=True,index=True)
+    strategy_decision_id:Mapped[int]=mapped_column(ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),index=True)
+    symbol:Mapped[str]=mapped_column(String(32),index=True);quantity:Mapped[float]=mapped_column(Float);entry_price:Mapped[float]=mapped_column(Float);entry_filled_at:Mapped[datetime]=mapped_column(DateTime(timezone=True));ex_dividend_date:Mapped[date]=mapped_column(Date,index=True);exit_target_price:Mapped[float]=mapped_column(Float)
+    status:Mapped[str]=mapped_column(String(24),index=True);exit_strategy_decision_id:Mapped[int|None]=mapped_column(ForeignKey("strategy_decisions.id",ondelete="RESTRICT"),nullable=True,index=True);exit_plan_id:Mapped[int|None]=mapped_column(ForeignKey("planned_trades.id",ondelete="RESTRICT"),nullable=True,index=True)
+    last_observed_price:Mapped[float|None]=mapped_column(Float,nullable=True);last_observed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True);created_by:Mapped[str]=mapped_column(String(64));created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now());updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
+
 class ControlledExecutionRecord(Base):
     __tablename__="controlled_execution_records"
     id:Mapped[int]=mapped_column(Integer,primary_key=True)
