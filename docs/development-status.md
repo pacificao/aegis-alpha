@@ -415,3 +415,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Raised the Dividend Farm total strategy allocation ceiling from 25% to 100% through immutable strategy version 5 and removed its strategy cash buffer.
 - Added a versioned deterministic risk policy permitting up to 100% portfolio exposure and 100% of currently verified buying power, while retaining per-position sizing, sector/correlation concentration, loss, drawdown, volatility, freshness, holdings, session, kill-switch and circuit-breaker controls.
 - The change permits all capital to be invested across independently qualified positions; it does not require full investment and cannot create or execute an unqualified trade. Trading remains DISABLED.
+
+## Fractional-dividend zero-payment gate (2026-08-22)
+
+- Added a deterministic Dividend Farm gate using Robinhood's nearest-cent fractional-dividend settlement rule. Expected payments below $0.005 fail closed with `FILTER_EXPECTED_DIVIDEND_ROUNDS_TO_ZERO`.
+- Enforced the rule during automatic planning, operator-created planning, and final entry-session revalidation. Candidate evidence now preserves declared dividend per share for quantity-level calculation, with event yield as a deterministic fallback.
+- The login-independent lifecycle worker cancels previously active Dividend Farm plans that fail the gate, releases their reserved capital, emits an operator notification, and records an auditable development activity. No broker call is made.
+- Boundary and lifecycle regression tests cover just below $0.005, exactly $0.005, accepted plans, and automatic cancellation. Trading remains `DISABLED`.
