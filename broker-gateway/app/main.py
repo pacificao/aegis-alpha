@@ -516,8 +516,9 @@ async def execution_place(payload:ExecutionRequest):
         args=_execution_arguments(tool.inputSchema or {},number,payload)
         if args is None:raise HTTPException(status_code=409,detail="Official placement schema is unsupported")
         result=await session.call_tool("place_equity_order",args)
-        if result.isError:raise HTTPException(status_code=409,detail="Official order placement rejected")
-        safe=_sanitize(tool_payload(result));actual=_actual_order(safe)
+        safe=_sanitize(tool_payload(result))
+        if result.isError:return {"status":"REJECTED","broker_evidence":safe,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"order_placed":False,"trading":"ENABLED"}
+        actual=_actual_order(safe)
         if actual is None:return {"status":"SUBMITTED_UNVERIFIED","actual_order":safe,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"order_placed":True,"trading":"ATTENTION"}
         return {"status":"SUBMITTED","actual_order":actual,"intent_checksum":payload.intent_checksum,"approval_checksum":payload.approval_checksum,"broker_called":True,"order_placed":True,"trading":"ENABLED"}
     return await _with_official_session(place)
