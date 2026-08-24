@@ -436,3 +436,9 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - The gateway accepts only exact review, place and cancel routes. A broker-issued order reference and broker-returned order fields are required; unverifiable, mismatched or ambiguous outcomes engage the circuit breaker and block duplicate submission.
 - Fresh unattended account snapshots reconcile unfilled, partial and full fills. Overfills fail closed. Operator cancellation is idempotent, and unknown timeout recovery requires an exact broker order reference and explicit confirmation.
 - Production Trial exposes the gates, 15-minute/$1 operator authorization, submit-once, cancellation, reconciliation and unknown-outcome recovery controls. No real order was placed during development; both live flags remain false pending operator deployment and bounded acceptance.
+
+## Official Robinhood pre-trade preview (2026-08-24)
+
+- Corrected official broker review argument serialization to match Robinhood MCP string schemas; review validation now succeeds without placing an order.
+- Production Trial now persists and displays the official Robinhood preview, quote disclosure, and broker alerts before exposing a separate one-time confirmation action. Missing disclosure fails closed.
+- Focused controlled-live regression tests passed 6/6. No live order was submitted by this change.
