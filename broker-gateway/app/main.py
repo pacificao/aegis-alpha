@@ -460,14 +460,27 @@ def _execution_arguments(schema:dict,number:str,payload:ExecutionRequest)->dict|
     if any(key not in args for key in required):return None
     return args
 
+def _known_http_exception(error:BaseException)->HTTPException|None:
+    pending=[error]
+    while pending:
+        current=pending.pop()
+        if isinstance(current,HTTPException):return current
+        if isinstance(current,BaseExceptionGroup):pending.extend(current.exceptions)
+    return None
+
 async def _with_official_session(operation):
     async def no_redirect(_:str)->None:raise RuntimeError("Robinhood reauthorization is required")
     async def no_callback()->tuple[str,str|None]:raise RuntimeError("Robinhood reauthorization is required")
     provider=OAuthClientProvider(server_url=MCP_URL,client_metadata=OAuthClientMetadata(client_name="Aegis Alpha Controlled Gateway",redirect_uris=[AnyUrl(OAUTH_REDIRECT_URI)],grant_types=["authorization_code","refresh_token"],response_types=["code"],scope="internal"),storage=storage,redirect_handler=no_redirect,callback_handler=no_callback)
-    async with httpx.AsyncClient(auth=provider,follow_redirects=True,timeout=30) as client:
-        async with streamable_http_client(MCP_URL,http_client=client) as (read,write,_):
-            async with ClientSession(read,write) as session:
-                await session.initialize();return await operation(session)
+    try:
+        async with httpx.AsyncClient(auth=provider,follow_redirects=True,timeout=30) as client:
+            async with streamable_http_client(MCP_URL,http_client=client) as (read,write,_):
+                async with ClientSession(read,write) as session:
+                    await session.initialize();return await operation(session)
+    except BaseExceptionGroup as group:
+        known=_known_http_exception(group)
+        if known is not None:raise known
+        raise
 
 @app.get("/internal/tool-schema/{tool_name}",dependencies=[Depends(internal_auth)])
 async def tool_schema(tool_name:str):

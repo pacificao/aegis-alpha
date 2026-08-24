@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet
 _fixture=Path(tempfile.mkdtemp(prefix="aegis-gateway-test-"));_key=_fixture/"key";_key.write_bytes(Fernet.generate_key());_key.chmod(0o600)
 os.environ.setdefault("BROKER_GATEWAY_SHARED_SECRET","x"*32);os.environ.setdefault("AEGIS_UI_URL","https://aegis-alpha.pacificao.com");os.environ["BROKER_GATEWAY_DATA_DIR"]=str(_fixture/"data");os.environ["BROKER_GATEWAY_KEY_FILE"]=str(_key)
 from pydantic import ValidationError
-from app.main import ACCOUNT_SNAPSHOT_TOOLS,AccountSnapshotRequest,ExecutionRequest,_account_number,_opaque,_records,_sanitize,_argument_sets,_execution_arguments
+from app.main import ACCOUNT_SNAPSHOT_TOOLS,AccountSnapshotRequest,ExecutionRequest,_account_number,_opaque,_records,_sanitize,_argument_sets,_execution_arguments,_known_http_exception
 from app.policy import READ_ONLY_TOOLS,is_tool_allowed
 
 def test_snapshot_tools_are_exact_reads_only():
@@ -44,3 +44,11 @@ def test_execution_actual_order_requires_broker_reference():
     assert _actual_order({"symbol":"SPY","side":"buy","quantity":"0.002","type":"limit","price":"500"}) is None
     actual=_actual_order({"id":"order-1","symbol":"SPY","side":"buy","quantity":"0.002","type":"limit","price":"500"})
     assert actual["order_ref"]=="order-1" and actual["symbol"]=="SPY"
+
+
+def test_task_group_wrapped_http_rejection_stays_known():
+    from fastapi import HTTPException
+    rejection=HTTPException(status_code=409,detail="Known broker rejection")
+    wrapped=ExceptionGroup("task group",[ExceptionGroup("session",[rejection])])
+    assert _known_http_exception(wrapped) is rejection
+    assert _known_http_exception(ExceptionGroup("transport",[RuntimeError("timeout")])) is None
