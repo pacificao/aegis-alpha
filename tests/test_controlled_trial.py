@@ -61,8 +61,8 @@ def test_controlled_trial_requires_risk_and_human_approval_but_never_executes():
             assert readiness.status_code == 200
             assert readiness.json()["live_ready"] is False
             assert readiness.json()["gates"]["controlled_live_acceptance"] is False
-            assert readiness.json()["gates"]["autonomy_acceptance"] is False
-            assert readiness.json()["gates"]["evolution_safety_acceptance"] is False
+            assert "autonomy_acceptance" not in readiness.json()["gates"]
+            assert "evolution_safety_acceptance" not in readiness.json()["gates"]
             assert readiness.json()["order_submission_available"] is False
             history = client.get("/api/portfolio/history")
             assert history.status_code == 200 and history.json()["trading"] == "DISABLED"

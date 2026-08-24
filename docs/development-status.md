@@ -442,3 +442,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Corrected official broker review argument serialization to match Robinhood MCP string schemas; review validation now succeeds without placing an order.
 - Production Trial now persists and displays the official Robinhood preview, quote disclosure, and broker alerts before exposing a separate one-time confirmation action. Missing disclosure fails closed.
 - Focused controlled-live regression tests passed 6/6. No live order was submitted by this change.
+
+
+## Controlled-live readiness circular-gate correction (2026-08-24)
+
+- Removed unfinished autonomy and evolution roadmap phases from the human-controlled trial submission gate. Those phases govern later unattended trading and research evolution, not the first explicitly approved acceptance order.
+- Phase 10 readiness now requires its implemented safety prerequisites: human approval, deterministic risk controls, selected account, realized-PnL/account synchronization, and FTP remediation. Real-capital fill/reconciliation tasks are measured outcomes of the trial and no longer circularly block starting it.
+- Account selection, fresh broker evidence, clear kill switch and circuit breaker, isolated execution adapter, explicit short-lived operator authorization, official preview, and submit-once controls remain mandatory.
