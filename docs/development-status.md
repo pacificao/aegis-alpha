@@ -449,3 +449,10 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 - Removed unfinished autonomy and evolution roadmap phases from the human-controlled trial submission gate. Those phases govern later unattended trading and research evolution, not the first explicitly approved acceptance order.
 - Phase 10 readiness now requires its implemented safety prerequisites: human approval, deterministic risk controls, selected account, realized-PnL/account synchronization, and FTP remediation. Real-capital fill/reconciliation tasks are measured outcomes of the trial and no longer circularly block starting it.
 - Account selection, fresh broker evidence, clear kill switch and circuit breaker, isolated execution adapter, explicit short-lived operator authorization, official preview, and submit-once controls remain mandatory.
+
+
+## Known Robinhood placement rejection reconciliation (2026-08-24)
+
+- The first governed placement attempt was rejected by the official Robinhood tool and placed no order. MCP task-group cleanup wrapped the known HTTP 409 as a gateway 500, so Aegis correctly classified the outcome as unknown and engaged its circuit breaker.
+- Two independent post-submit Robinhood account snapshots confirmed zero orders, zero positions, unchanged 10-dollar cash and buying power, and no dataset failures. The execution ledger was reconciled to REJECTED and the evidence-backed automatic breaker was cleared; no retry occurred.
+- Gateway exception unwrapping now preserves known broker HTTP rejections while leaving transport failures ambiguous and fail-closed. Broker-gateway regression tests passed 39/39.
