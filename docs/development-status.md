@@ -1,5 +1,7 @@
 # Development Status
 
+- 2026-08-24: Fixed official Robinhood pre-trade review serialization: schema-declared string fields such as fractional quantity and limit price are now emitted as strings. Gateway tests: 38 passed. The failed JNJ review placed no order.
+
 - 2026-08-24: Raised the deterministic micro-account per-position and controlled-live authorization ceiling from  to  only while portfolio value is below . This makes sub-half-cent Dividend Farm events such as JNJ payable without weakening Strategy or RiskEngine gates. Focused planning, risk, and execution tests: 19 passed; no order submitted by the change.
 
 - 2026-08-23: Production Trial now lists active planned orders and only offers intent creation from a linked, authorized deterministic RiskEngine assessment. It explicitly explains the pre-entry waiting state instead of exposing a raw risk ID or an empty unexplained workflow. Production build passed; no order was submitted.
