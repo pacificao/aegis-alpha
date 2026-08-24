@@ -782,7 +782,11 @@ def controlled_live_readiness(_:Principal=Depends(current_principal),db:Session=
 
 @app.get("/api/controlled-live/intents")
 def controlled_intents(limit:int=Query(default=100,ge=1,le=500),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
-    return [serialize_controlled_intent(row) for row in db.scalars(select(ControlledTradeIntent).order_by(ControlledTradeIntent.created_at.desc()).limit(limit)).all()]
+    result=[]
+    for row in db.scalars(select(ControlledTradeIntent).order_by(ControlledTradeIntent.created_at.desc()).limit(limit)).all():
+        item=serialize_controlled_intent(row);record=db.scalar(select(ControlledExecutionRecord).where(ControlledExecutionRecord.intent_id==row.id))
+        item["official_review"]=record.review_snapshot if record else None;result.append(item)
+    return result
 
 @app.post("/api/controlled-live/intents",status_code=201)
 def create_controlled_intent(payload:ControlledIntentCreate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):

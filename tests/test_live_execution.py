@@ -31,10 +31,11 @@ def fixture():
 def prepare(client,risk_id,monkeypatch):
     monkeypatch.setattr(settings,"aegis_trading_enabled",True)
     monkeypatch.setattr("app.main.BrokerGatewayClient.status",lambda self:{"status":"CONNECTED","execution_adapter_deployed":True,"execution_enabled":True})
-    monkeypatch.setattr("app.main.BrokerGatewayClient.execution_review",lambda self,payload:{"status":"REVIEWED","review":{"verified":True},"order_placed":False})
+    monkeypatch.setattr("app.main.BrokerGatewayClient.execution_review",lambda self,payload:{"status":"REVIEWED","review":{"data":{"market_data_disclosure":"Bid 499.90 · Ask 500.00","order_checks":{}}},"order_placed":False})
     created=client.post("/api/controlled-live/intents",json={"risk_assessment_id":risk_id,"order_type":"LIMIT"});assert created.status_code==201,created.text;intent=created.json()
     approved=client.post(f"/api/controlled-live/intents/{intent['id']}/approve",json={"intent_checksum":intent["intent_checksum"],"confirmation":"APPROVE CONTROLLED TRIAL"});assert approved.status_code==200
     reviewed=client.post(f"/api/controlled-live/intents/{intent['id']}/review");assert reviewed.status_code==200,reviewed.text
+    listed=client.get("/api/controlled-live/intents");assert listed.status_code==200;listed_intent=next(row for row in listed.json() if row["id"]==intent["id"]);assert listed_intent["official_review"]["data"]["market_data_disclosure"]
     authorized=client.patch("/api/controlled-live/authorization",json={"enabled":True,"max_order_notional":1,"duration_minutes":5,"confirmation":"AUTHORIZE CONTROLLED LIVE TRADING","reason":"Controlled one dollar production acceptance"});assert authorized.status_code==200,authorized.text
     return intent
 
