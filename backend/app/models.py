@@ -360,7 +360,7 @@ class LiveTradingAuthorization(Base):
     __tablename__="live_trading_authorizations"
     id:Mapped[int]=mapped_column(Integer,primary_key=True)
     enabled:Mapped[bool]=mapped_column(Boolean,default=False)
-    max_order_notional:Mapped[float]=mapped_column(Float,default=1.0)
+    max_order_notional:Mapped[float]=mapped_column(Float,default=2.0)
     authorized_by:Mapped[str]=mapped_column(String(64));reason:Mapped[str]=mapped_column(Text)
     authorized_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     expires_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True,index=True)

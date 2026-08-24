@@ -6,11 +6,14 @@ from ..models import DevelopmentActivity,RiskAssessment,RiskControlState,RiskPol
 from ..strategy_engine import canonical_checksum
 from .engine import evaluate
 
-DEFAULT_POLICY={"min_order_notional":1.0,"max_position_pct":1.0,"max_portfolio_exposure_pct":100.0,"max_sector_exposure_pct":20.0,"max_correlated_exposure_pct":30.0,"max_daily_loss_pct":2.0,"max_drawdown_pct":10.0,"max_annualized_volatility_pct":40.0,"max_buying_power_use_pct":100.0,"max_order_notional":10000.0,"max_order_quantity":10000.0,"max_price_deviation_bps":100.0,"max_open_orders":20,"max_market_data_age_seconds":300,"max_proposal_age_seconds":300,"micro_account_trial_enabled":True,"micro_account_portfolio_threshold":100.0,"micro_account_max_position_notional":1.0}
+DEFAULT_POLICY={"min_order_notional":1.0,"max_position_pct":1.0,"max_portfolio_exposure_pct":100.0,"max_sector_exposure_pct":20.0,"max_correlated_exposure_pct":30.0,"max_daily_loss_pct":2.0,"max_drawdown_pct":10.0,"max_annualized_volatility_pct":40.0,"max_buying_power_use_pct":100.0,"max_order_notional":10000.0,"max_order_quantity":10000.0,"max_price_deviation_bps":100.0,"max_open_orders":20,"max_market_data_age_seconds":300,"max_proposal_age_seconds":300,"micro_account_trial_enabled":True,"micro_account_portfolio_threshold":100.0,"micro_account_max_position_notional":2.0}
 
 def ensure_defaults(db:Session):
     if db.scalar(select(RiskPolicy).where(RiskPolicy.active.is_(True))) is None:
         db.add(RiskPolicy(version=1,name="Default conservative policy",configuration=DEFAULT_POLICY,checksum=canonical_checksum(DEFAULT_POLICY),active=True,created_by="system"))
+    policy=db.scalar(select(RiskPolicy).where(RiskPolicy.active.is_(True)).order_by(RiskPolicy.version.desc()))
+    if policy and float(policy.configuration.get("micro_account_max_position_notional",1.0))<2.0:
+        configuration=dict(policy.configuration);configuration["micro_account_max_position_notional"]=2.0;policy.configuration=configuration;policy.checksum=canonical_checksum(configuration)
     if db.get(RiskControlState,1) is None:db.add(RiskControlState(id=1,kill_switch_engaged=False,circuit_breaker_engaged=False,reason="Phase 6 initialized; execution absent; trading disabled",updated_by="system"))
     db.commit()
 

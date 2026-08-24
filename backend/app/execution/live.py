@@ -21,7 +21,7 @@ def authorization_effective(row:LiveTradingAuthorization|None,settings,gateway:d
 
 def serialize_authorization(row,settings,gateway):
     effective=authorization_effective(row,settings,gateway)
-    return {"enabled":bool(row and row.enabled),"effective":effective,"max_order_notional":row.max_order_notional if row else 1,"authorized_by":row.authorized_by if row else None,"authorized_at":row.authorized_at if row else None,"expires_at":row.expires_at if row else None,"reason":row.reason if row else "Not initialized","backend_enabled":settings.aegis_trading_enabled,"gateway_enabled":gateway.get("execution_enabled") is True,"trading":"ENABLED" if effective else "DISABLED"}
+    return {"enabled":bool(row and row.enabled),"effective":effective,"max_order_notional":row.max_order_notional if row else 2,"authorized_by":row.authorized_by if row else None,"authorized_at":row.authorized_at if row else None,"expires_at":row.expires_at if row else None,"reason":row.reason if row else "Not initialized","backend_enabled":settings.aegis_trading_enabled,"gateway_enabled":gateway.get("execution_enabled") is True,"trading":"ENABLED" if effective else "DISABLED"}
 
 def _attention(db,controls,record,row,code,actor):
     record.status="UNKNOWN";record.reconciliation={"status":"ATTENTION","code":code,"requires_human_attention":True};row.status="EXECUTION_ATTENTION"
