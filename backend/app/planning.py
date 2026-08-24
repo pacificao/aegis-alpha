@@ -73,7 +73,7 @@ def create_qualified_plans(db:Session,today:date)->list[int]:
     for entry,ex_date,decision in sorted(candidates,key=lambda item:(item[0],item[1],item[2].symbol)):
         if deployable<1 or allocation_left<1:break
         if db.scalar(select(PlannedTrade).where(PlannedTrade.symbol==decision.symbol,PlannedTrade.planned_entry_date==entry,PlannedTrade.status.in_(EXPIRABLE_PLAN_STATUSES))):continue
-        price=float(decision.inputs.get("latest_close") or 0);micro=portfolio_value<100;target=1.0 if micro else portfolio_value*max_position;notional=round(min(target,deployable,allocation_left),2)
+        price=float(decision.inputs.get("latest_close") or 0);micro=portfolio_value<100;target=2.0 if micro else portfolio_value*max_position;notional=round(min(target,deployable,allocation_left),2)
         if price<=0 or notional<1:continue
         quantity=round(notional/price,6);reserved_notional=round(quantity*price,2)
         if reserved_notional<1:continue
