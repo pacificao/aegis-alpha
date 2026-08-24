@@ -452,8 +452,11 @@ def _actual_order(value:object)->dict|None:
 def _execution_arguments(schema:dict,number:str,payload:ExecutionRequest)->dict|None:
     values={"account_number":number,"account_id":number,"symbol":payload.symbol,"ticker":payload.symbol,"side":payload.side.lower(),"quantity":payload.quantity,"order_type":"limit","type":"limit","limit_price":payload.limit_price,"price":payload.limit_price,"time_in_force":payload.time_in_force.lower(),"tif":payload.time_in_force.lower()}
     required=schema.get("required",[]);properties=schema.get("properties",{});args={}
-    for key in properties:
-        if key in values:args[key]=values[key]
+    for key,definition in properties.items():
+        if key not in values:continue
+        value=values[key]
+        expected=definition.get("type") if isinstance(definition,dict) else None
+        args[key]=str(value) if expected=="string" else value
     if any(key not in args for key in required):return None
     return args
 
