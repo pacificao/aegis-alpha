@@ -455,4 +455,4 @@ Phase 1 privileged cleanup and the `v0.1.0-core` tag are complete.
 
 - The first governed placement attempt was rejected by the official Robinhood tool and placed no order. MCP task-group cleanup wrapped the known HTTP 409 as a gateway 500, so Aegis correctly classified the outcome as unknown and engaged its circuit breaker.
 - Two independent post-submit Robinhood account snapshots confirmed zero orders, zero positions, unchanged 10-dollar cash and buying power, and no dataset failures. The execution ledger was reconciled to REJECTED and the evidence-backed automatic breaker was cleared; no retry occurred.
-- Gateway exception unwrapping now preserves known broker HTTP rejections while leaving transport failures ambiguous and fail-closed. Broker-gateway regression tests passed 39/39.
+- Gateway exception unwrapping now preserves known broker HTTP rejections while leaving transport failures ambiguous and fail-closed. Sanitized official rejection evidence is retained in the execution ledger for diagnosis without exposing credentials. Broker-gateway regression tests passed 39/39 and focused execution tests passed 6/6.
