@@ -61,9 +61,9 @@ def test_kill_switch_blocks_before_broker_call(client,monkeypatch):
 
 def test_known_rejection_is_terminal_without_duplicate(client,monkeypatch):
     intent=prepare(client,fixture(),monkeypatch);calls=[]
-    def reject(self,payload):calls.append(payload);return {"status":"REJECTED"}
+    def reject(self,payload):calls.append(payload);return {"status":"REJECTED","broker_evidence":{"message":"official validation rejected"}}
     monkeypatch.setattr("app.execution.live.BrokerGatewayClient.execution_place",reject)
-    response=client.post(f"/api/controlled-live/intents/{intent['id']}/execute");assert response.status_code==200 and response.json()["status"]=="REJECTED"
+    response=client.post(f"/api/controlled-live/intents/{intent['id']}/execute");assert response.status_code==200 and response.json()["status"]=="REJECTED";assert response.json()["reconciliation"]["broker_evidence"]["message"]=="official validation rejected"
     again=client.post(f"/api/controlled-live/intents/{intent['id']}/execute");assert again.status_code==200 and len(calls)==1
 
 def test_unknown_or_mismatched_submission_engages_breaker(client,monkeypatch):
