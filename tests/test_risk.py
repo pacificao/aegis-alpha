@@ -38,8 +38,8 @@ def test_micro_account_exception_is_bounded_and_explicit():
     allowed=evaluate(policy,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     position=next(check for check in allowed["checks"] if check["code"]=="POSITION_LIMIT")
     assert allowed["outcome"]=="AUTHORIZED" and allowed["notional"]==1.0
-    assert position["limit"]==1.0 and "micro-account" in position["detail"]
-    too_large=evaluate(policy,proposal(quantity=0.0022,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
+    assert position["limit"]==2.0 and "micro-account" in position["detail"]
+    too_large=evaluate(policy,proposal(quantity=0.0042,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert too_large["outcome"]=="REJECTED" and "POSITION_LIMIT" in too_large["reason_codes"]
     ordinary=evaluate(DEFAULT_POLICY,proposal(quantity=0.002,fractional_eligible=True,regular_session=True,**base),{"kill_switch_engaged":False,"circuit_breaker_engaged":False},NOW)
     assert ordinary["outcome"]=="REJECTED" and "POSITION_LIMIT" in ordinary["reason_codes"]

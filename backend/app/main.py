@@ -750,7 +750,7 @@ def live_authorization(_:Principal=Depends(current_principal),db:Session=Depends
 def update_live_authorization(payload:LiveTradingAuthorizationUpdate,principal:Principal=Depends(csrf_protected),db:Session=Depends(get_db)):
     row=db.get(LiveTradingAuthorization,1)
     if row is None:
-        row=LiveTradingAuthorization(id=1,enabled=False,max_order_notional=1,authorized_by="system",reason="Initialized disabled");db.add(row)
+        row=LiveTradingAuthorization(id=1,enabled=False,max_order_notional=2,authorized_by="system",reason="Initialized disabled");db.add(row)
     now=datetime.now(UTC)
     if payload.enabled:
         if payload.confirmation!="AUTHORIZE CONTROLLED LIVE TRADING":raise HTTPException(status_code=409,detail="Exact live authorization phrase required")

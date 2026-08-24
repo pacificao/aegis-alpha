@@ -313,7 +313,7 @@ class RiskPolicyConfiguration(BaseModel):
     max_open_orders:int=Field(gt=0,le=100000);max_market_data_age_seconds:int=Field(gt=0,le=86400);max_proposal_age_seconds:int=Field(gt=0,le=86400)
     micro_account_trial_enabled:bool=True
     micro_account_portfolio_threshold:float=Field(default=100.0,gt=0,le=1000)
-    micro_account_max_position_notional:float=Field(default=1.0,gt=0,le=10)
+    micro_account_max_position_notional:float=Field(default=2.0,gt=0,le=10)
 
 class RiskPolicyCreate(BaseModel):
     model_config=ConfigDict(extra="forbid")
