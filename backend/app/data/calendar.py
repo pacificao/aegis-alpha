@@ -63,3 +63,10 @@ def next_sessions(count:int=10,start:date|None=None)->list[dict]:
         if session["is_open"]:result.append(session)
         day+=timedelta(days=1)
     return result
+
+
+def actionable_session_start(now:datetime|None=None)->date:
+    """First session that can still accept a regular-hours entry."""
+    local=(now or datetime.now(UTC)).astimezone(EASTERN);session=market_session(local.date())
+    if session["is_open"] and local < datetime.fromisoformat(session["close_at"]).astimezone(EASTERN):return local.date()
+    return date.fromisoformat(next_sessions(1,local.date()+timedelta(days=1))[0]["session_date"])

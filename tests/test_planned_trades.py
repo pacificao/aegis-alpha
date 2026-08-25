@@ -40,12 +40,14 @@ def test_missed_approval_states_expire_release_capital_and_audit():
     with SessionLocal() as db:
         scenario=StrategyScenario(name=f"Expiry {marker}",strategy_type="DIVIDEND_FARM",description="expiry fixture",lifecycle="RESEARCH",parameters={});db.add(scenario);db.flush()
         version=StrategyVersion(scenario_id=scenario.id,version=1,specification={},checksum=marker.ljust(64,"0")[:64],created_by="test");db.add(version);db.flush()
-        for index,status in enumerate(("PLANNED","REVALIDATION_BLOCKED","READY_FOR_FINAL_APPROVAL")):
+        session_day=date(2026,8,24)
+        fixtures=(("PLANNED",session_day-timedelta(days=1)),("REVALIDATION_BLOCKED",session_day-timedelta(days=1)),("READY_FOR_FINAL_APPROVAL",session_day-timedelta(days=1)),("PLANNED",session_day))
+        for index,(status,entry_day) in enumerate(fixtures):
             decision=StrategyDecision(version_id=version.id,symbol=f"X{index}",as_of=datetime.now(UTC),decision="ENTRY",reason_codes=["QUALIFIED"],proposed_weight_pct=.1,inputs={});db.add(decision);db.flush()
-            db.add(PlannedTrade(strategy_decision_id=decision.id,symbol=decision.symbol,side="BUY",quantity=1,reference_price=2,reserved_notional=2,planned_entry_date=date.today()-timedelta(days=1),status=status,rationale="Missed approval fixture",plan_checksum=(marker+str(index)).ljust(64,"0")[:64],created_by="test"))
-        db.commit();expired=expire_missed_plans(db,date.today());assert len(expired)==3
-        assert db.query(PlannedTrade).filter(PlannedTrade.id.in_(expired),PlannedTrade.status=="EXPIRED").count()==3
-        assert db.query(DevelopmentActivity).filter(DevelopmentActivity.entity_type=="planned_trade",DevelopmentActivity.entity_id.in_(expired),DevelopmentActivity.action=="planned_trade_expired").count()==3
+            db.add(PlannedTrade(strategy_decision_id=decision.id,symbol=decision.symbol,side="BUY",quantity=1,reference_price=2,reserved_notional=2,planned_entry_date=entry_day,status=status,rationale="Missed approval fixture",plan_checksum=(marker+str(index)).ljust(64,"0")[:64],created_by="test"))
+        db.commit();expired=expire_missed_plans(db,now=datetime(2026,8,24,20,1,tzinfo=UTC));assert len(expired)==4
+        assert db.query(PlannedTrade).filter(PlannedTrade.id.in_(expired),PlannedTrade.status=="EXPIRED").count()==4
+        assert db.query(DevelopmentActivity).filter(DevelopmentActivity.entity_type=="planned_trade",DevelopmentActivity.entity_id.in_(expired),DevelopmentActivity.action=="planned_trade_expired").count()==4
 
 
 def test_fully_qualified_entry_is_planned_without_risk_or_broker_call():
