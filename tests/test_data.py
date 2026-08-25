@@ -129,3 +129,10 @@ def test_robinhood_market_data_request_is_fail_closed():
     ):
         try: RobinhoodDataIngestRequest(**payload); assert False
         except ValueError: pass
+
+
+def test_actionable_session_rolls_forward_after_close():
+    from app.data.calendar import EASTERN, actionable_session_start
+    assert actionable_session_start(datetime(2026,8,24,15,59,tzinfo=EASTERN))==date(2026,8,24)
+    assert actionable_session_start(datetime(2026,8,24,16,0,tzinfo=EASTERN))==date(2026,8,25)
+    assert actionable_session_start(datetime(2026,8,28,16,1,tzinfo=EASTERN))==date(2026,8,31)

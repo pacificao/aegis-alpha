@@ -29,7 +29,7 @@ from .logging import configure_logging
 from .models import CandidateScanState, DataProvider, BrokerConnectionConfig, BrokerSnapshot, BrokerSyncRun, ControlledExecutionRecord, ControlledTradeIntent, LiveTradingAuthorization, PlannedTrade, DataRecord, DevelopmentActivity, Instrument, LabRun, LabTrade, OperatorPreference, Phase, IntelligenceArtifact, IntelligenceReview, PaperAccount, PaperFill, PaperOrder, PaperPosition, RiskAssessment, RiskControlState, RiskPolicy, StrategyDecision, StrategyScenario, StrategyVersion, Task, TaskStatus
 from .schemas import ControlledIntentApproval, ControlledIntentCreate, ControlledIntentRejection, ControlledExecutionRecovery, ControlledExecutionCancel, LiveTradingAuthorizationUpdate, PlannedTradeCancel, PlannedTradeCreate, PlannedTradeRevalidate, DataIngestRequest, IntelligenceArtifactCreate, IntelligenceReviewCreate, PaperOrderCreate, LabBacktestRequest, OperatorPreferenceOut, OperatorPreferenceUpdate, PhaseOut, RiskAssessmentRequest, RiskControlUpdate, RiskPolicyCreate, RobinhoodConfigOut, RobinhoodConfigUpdate, ScenarioCreate, ScenarioOut, RobinhoodDataIngestRequest, ScenarioUpdate, StrategyEvaluationRequest, StrategyVersionCreate, TaskOut, TaskUpdate
 from .data.cache import DataCache
-from .data.calendar import EASTERN, dividend_entry_plan, market_session, next_sessions, sessions
+from .data.calendar import EASTERN, actionable_session_start, dividend_entry_plan, market_session, next_sessions, sessions
 from .data.providers import ProviderError
 from .data.service import ingest as ingest_data, ingest_robinhood, status as data_service_status
 from .data.queue import queue_status, seed_control_jobs
@@ -357,12 +357,12 @@ def data_calendar(start: date = Query(), end: date = Query(), _: Principal = Dep
 
 @app.get("/api/data/dividend-calendar")
 def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Principal=Depends(current_principal),db:Session=Depends(get_db)):
-    calendar=next_sessions(trading_days);dates={row["session_date"] for row in calendar};start=datetime.combine(datetime.now(EASTERN).date(),datetime.min.time(),tzinfo=UTC);end=datetime.fromisoformat(calendar[-1]["session_date"]).replace(tzinfo=UTC)+timedelta(days=1)
+    actionable_start=actionable_session_start();calendar=next_sessions(trading_days,actionable_start);dates={row["session_date"] for row in calendar};start=datetime.combine(actionable_start,datetime.min.time(),tzinfo=UTC);end=datetime.fromisoformat(calendar[-1]["session_date"]).replace(tzinfo=UTC)+timedelta(days=2)
     records=db.execute(select(DataRecord,Instrument.symbol,DataProvider.name).join(Instrument,Instrument.id==DataRecord.instrument_id).join(DataProvider,DataProvider.id==DataRecord.provider_id).where(DataRecord.data_type=="CORPORATE_ACTION",DataRecord.event_time>=start,DataRecord.event_time<end,DataRecord.quality_status!="REJECTED").order_by(DataRecord.event_time,Instrument.symbol)).all()
     selected={}
     for record,symbol,provider in records:
         payload=record.payload or {};day=str(payload.get("ex_dividend_date") or record.event_time.date().isoformat())
-        if day not in dates or payload.get("action")!="DIVIDEND":continue
+        if payload.get("action")!="DIVIDEND":continue
         key=(symbol,day);candidate={"id":record.id,"symbol":symbol,"ex_dividend_date":day,"amount":payload.get("dividend_per_share",payload.get("amount")),"payment_frequency":payload.get("payment_frequency") or payload.get("frequency"),"payment_date":payload.get("payment_date") or payload.get("payable_date"),"annual_yield_pct":payload.get("annual_yield_pct"),"provider":provider.upper(),"coverage":payload.get("coverage","HISTORICAL_EVENT"),"quality_status":record.quality_status,**dividend_entry_plan(date.fromisoformat(day))}
         if key not in selected or provider=="robinhood":selected[key]=candidate
     symbols={event["symbol"] for event in selected.values()};evidence={}
@@ -400,6 +400,7 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
     for event in selected.values():
         event.update(evidence.get(event["symbol"],{}))
         event["eligible_entry_date"]=event.pop("planned_entry_date")
+        if event["eligible_entry_date"] not in dates:continue
         plan=plans.get((event["symbol"],event["eligible_entry_date"]))
         event["trade_plan"]={"id":plan.id,"status":plan.status,"quantity":plan.quantity,"reserved_notional":plan.reserved_notional,"planned_entry_date":plan.planned_entry_date} if plan else None
         event["strategy_decision"]=strategy.get(event["symbol"])
@@ -409,10 +410,10 @@ def data_dividend_calendar(trading_days:int=Query(default=10,ge=1,le=20),_:Princ
             decision=event["strategy_decision"];event["recommendation"]="QUALIFIED_AWAITING_PLAN" if decision["decision"]=="ENTRY" else "DO_NOT_PLAN";event["recommendation_reason"]=("All strategy gates passed; unattended planner is awaiting available capital." if decision["decision"]=="ENTRY" else f"Dividend Farm v{decision["version"]} {decision["decision"]}: {', '.join(decision["reason_codes"])}")
         else:
             event["recommendation"]="AWAITING_STRATEGY_SCAN";event["recommendation_reason"]="No current immutable-strategy decision is available yet."
-        by_day[event["ex_dividend_date"]].append(event)
+        by_day[event["eligible_entry_date"]].append(event)
     validated=int(db.scalar(select(func.count()).select_from(Instrument).where(Instrument.active.is_(True))) or 0)
     covered=int(db.scalar(select(func.count(func.distinct(DataRecord.instrument_id))).join(Instrument,Instrument.id==DataRecord.instrument_id).where(DataRecord.data_type=="BROKER_FUNDAMENTAL",Instrument.active.is_(True))) or 0)
-    return {"sessions":[{**row,"events":sorted(by_day[row["session_date"]],key=lambda item:item["symbol"])} for row in calendar],"event_count":len(selected),"primary_provider":"ROBINHOOD","enrichment_providers":["ALPHA_VANTAGE","ALPACA"],"coverage":{"fundamentals_covered":covered,"validated_instruments":validated,"percent":round(covered/validated*100,1) if validated else 0,"status":"COMPLETE" if validated and covered>=validated else "BACKFILLING"},"trading":"DISABLED"}
+    return {"sessions":[{**row,"events":sorted(by_day[row["session_date"]],key=lambda item:item["symbol"])} for row in calendar],"event_count":sum(len(events) for events in by_day.values()),"primary_provider":"ROBINHOOD","enrichment_providers":["ALPHA_VANTAGE","ALPACA"],"coverage":{"fundamentals_covered":covered,"validated_instruments":validated,"percent":round(covered/validated*100,1) if validated else 0,"status":"COMPLETE" if validated and covered>=validated else "BACKFILLING"},"trading":"DISABLED"}
 
 @app.post("/api/data/robinhood/ingest")
 def robinhood_data_ingest(payload: RobinhoodDataIngestRequest, principal: Principal = Depends(csrf_protected), db: Session = Depends(get_db)):
