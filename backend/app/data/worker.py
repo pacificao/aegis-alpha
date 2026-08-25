@@ -62,7 +62,7 @@ def _run_exit_monitor()->None:
 def _expire_plans()->None:
     db=SessionLocal()
     try:
-        rejected=reject_unpayable_plans(db);expired=expire_missed_plans(db,datetime.now(EASTERN).date())
+        now=datetime.now(EASTERN);rejected=reject_unpayable_plans(db);expired=expire_missed_plans(db,now=now)
         if rejected or expired:logging.info("rejected_unpayable_plans=%s expired_plans=%s released_reservations=true",rejected,expired)
     except Exception:logging.exception("plan_expiry_failed")
     finally:db.close()

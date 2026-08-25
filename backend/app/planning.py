@@ -1,22 +1,27 @@
 """Deterministic lifecycle maintenance for non-executable capital plans."""
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .data.calendar import dividend_entry_plan, next_sessions
-from .models import BrokerSnapshot, CandidateScanState, DevelopmentActivity, PlannedTrade, StrategyDecision, StrategyScenario, StrategyVersion
+from .data.calendar import EASTERN, actionable_session_start, dividend_entry_plan, next_sessions
+from .models import BrokerSnapshot, CandidateScanState, ControlledTradeIntent, DevelopmentActivity, PlannedTrade, StrategyDecision, StrategyScenario, StrategyVersion
 from .strategy_engine import canonical_checksum
 from .dividend_payments import ZERO_PAYMENT_REASON, payable_fractional_dividend
 
 EXPIRABLE_PLAN_STATUSES=frozenset({"PLANNED","REVALIDATION_BLOCKED","READY_FOR_FINAL_APPROVAL"})
 
-def expire_missed_plans(db:Session,today:date)->list[int]:
+def expire_missed_plans(db:Session,today:date|None=None,now:datetime|None=None)->list[int]:
     """Release reservations after their eligible entry session has passed."""
-    rows=db.scalars(select(PlannedTrade).where(PlannedTrade.status.in_(EXPIRABLE_PLAN_STATUSES),PlannedTrade.planned_entry_date<today).order_by(PlannedTrade.id)).all()
+    current=(now or datetime.now(UTC)).astimezone(EASTERN);cutoff=actionable_session_start(current)
+    if today is not None and today>cutoff:cutoff=today
+    rows=db.scalars(select(PlannedTrade).where(PlannedTrade.status.in_(EXPIRABLE_PLAN_STATUSES),PlannedTrade.planned_entry_date<cutoff).order_by(PlannedTrade.id)).all()
     expired=[]
     for row in rows:
         row.status="EXPIRED";row.revalidation_detail="ENTRY_SESSION_PASSED";row.notification_status="PENDING";row.notification_event="PLAN_EXPIRED"
+        if row.final_risk_assessment_id:
+            intents=db.scalars(select(ControlledTradeIntent).where(ControlledTradeIntent.risk_assessment_id==row.final_risk_assessment_id,ControlledTradeIntent.status.in_(("PROPOSED","APPROVED_TRIAL_ONLY","REVIEWED_TRIAL_ONLY")))).all()
+            for intent in intents:intent.status="EXPIRED";intent.rejection_reason="ENTRY_SESSION_PASSED"
         db.add(DevelopmentActivity(actor="system:plan-lifecycle",action="planned_trade_expired",entity_type="planned_trade",entity_id=row.id,detail=f"symbol={row.symbol}; entry={row.planned_entry_date}; released_notional={row.reserved_notional:.2f}; broker_called=false; trading=DISABLED"));expired.append(row.id)
     if expired:db.commit()
     return expired
