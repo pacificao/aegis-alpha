@@ -6,6 +6,6 @@ alembic==1.16.4
 redis==6.4.0
 pydantic-settings==2.10.1
 structlog==25.4.0
-slowapi==0.1.9
+slowapi==0.1.10
 python-multipart==0.0.31
 httpx==0.28.1
